@@ -27,7 +27,6 @@
 #define NFD_DAEMON_FW_FORWARDER_HPP
 
 #include "cuckoofilter/cuckoofilter.h"
-#include "boost/bimap.hpp"
 #include "face-table.hpp"
 #include "forwarder-counters.hpp"
 #include "unsolicited-data-policy.hpp"
@@ -39,6 +38,10 @@
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
+#include "ns3/random-variable-stream.h"
+#include<map>
+#include <set>
+#include <boost/bimap.hpp>//必须放在最后include，不然error:reference to ‘_1’ is ambiguous,extern const _Placeholder<3> _3;
 
 namespace nfd {
 
@@ -63,6 +66,9 @@ public:
 
   VIRTUAL_WITH_TESTS
   ~Forwarder();
+
+  void 
+  probe(const Interest& interest);
 
   const ForwarderCounters&
   getCounters() const
@@ -305,12 +311,14 @@ private:
   NetworkRegionTable m_networkRegionTable;
   shared_ptr<Face>   m_csFace;
   cuckoofilter::CuckooFilter<uint64_t, 12> dataFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(10000);
-  //不知道是否布谷鸟过滤器可以使用非常规数据类型，实现中与itemtype有关的操作是哈希，关键在于哈希是否支持非常规数据类型。若测试结果表明可以，则这里不用使用string，而用Name类型
-  cuckoofilter::CuckooFilter<std::string, 12> probeFilter=cuckoofilter::CuckooFilter<std::string, ,12>(20);
+  cuckoofilter::CuckooFilter<uint64_t, 12> probeFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(20);
   size_t nSendTotalProbe=10;//发送总的探测包数量
   uint32_t ei_now=0; 
-  boost::bimap<FaceEndpoint,uint32_t> face_ei;//存储face和ei的对应关系
+  boost::bimap<FaceEndpoint>,uint32_t> face_ei;//存储face和ei的对应关系
+  std::set<FaceEndpoint> face_info;//存储可修改（删除然后插入）的FaceInfo
   bool isProbing=false;
+  bool allFaceReceiveEnoughProbe=false;
+  ::ns3::Ptr<::ns3::UniformRandomVariable> m_rand;
 
 
 
