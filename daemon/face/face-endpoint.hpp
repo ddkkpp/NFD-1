@@ -36,16 +36,43 @@ namespace nfd {
 class FaceEndpoint
 {
 public:
-  FaceEndpoint(Face& face, EndpointId endpoint)
-    : face(face)
+  FaceEndpoint(const Face& face, EndpointId endpoint)//非基本类型的参数传递，用const加引用，防止参数被修改
+    : face(const_cast<Face&>(face))
     , endpoint(endpoint)
+    ,isMalicious(false)
   {
+  }
+  //使用endpoint作为比较的标准，由于endpoint全部为0，可能会导致bimap插入冲突
+  bool operator<(const FaceEndpoint& other) const
+  {
+      return face.getId() < other.face.getId(); 
+  }
+
+    bool operator=(const FaceEndpoint& other) const
+  {
+      return face.getId() == other.face.getId(); 
   }
 
 public:
   Face& face;
   const EndpointId endpoint;
+  bool isTarget=false;//该端口是否正在探测
+  size_t nReceiveInvalidProbeData=0;//探测为假的数据包个数
+  size_t nReceiveTotalProbeData=0;//探测数据包总个数
+  size_t nSendTotalProbe=10;//发送总的探测包数量
+  double rateofReceivetoSend=0.9;
+  bool receiveEnoughProbe=false;
+  bool isMalicious;
 };
+
+// class myCompare
+// {
+// public:
+// 	bool operator()(const FaceEndpoint& p1, const FaceEndpoint& p2) const
+// 	{
+// 		return p1.face.getId() > p2.face.getId();
+// 	}
+// };
 
 inline std::ostream&
 operator<<(std::ostream& os, const FaceEndpoint& fe)
