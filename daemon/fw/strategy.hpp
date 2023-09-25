@@ -183,8 +183,8 @@ public: // triggers
   beforeSatisfyInterest(const Data& data, const FaceEndpoint& ingress,
                         const shared_ptr<pit::Entry>& pitEntry);
 
-
-  virtual void
+//自己修改返回值：为了给forwarder一个指示本节点是否会修改data的bool值
+  virtual bool
   satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
                   const FaceEndpoint& ingress, const Data& data,
                   std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
@@ -293,7 +293,7 @@ protected: // actions
    * \param pitEntry the PIT entry
    * \return Whether the Data was sent (true) or dropped (false)
    */
-  NFD_VIRTUAL_WITH_TESTS bool
+  NFD_VIRTUAL_WITH_TESTS virtual bool
   sendData(const Data& data, Face& egress, const shared_ptr<pit::Entry>& pitEntry);
 
   /**

@@ -30,6 +30,7 @@
 #include "face-counters.hpp"
 #include "link-service.hpp"
 #include "transport.hpp"
+#include "common/logger.hpp"
 
 namespace nfd {
 namespace face {

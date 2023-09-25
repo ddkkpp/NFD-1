@@ -71,9 +71,18 @@ public:
   afterReceiveNack(const lp::Nack& nack, const FaceEndpoint& ingress,
                    const shared_ptr<pit::Entry>& pitEntry) override;
 
-  void
-  afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
-                  const shared_ptr<pit::Entry>& pitEntry) override;
+  bool
+  sendData(const Data& data, Face& egress, const shared_ptr<pit::Entry>& pitEntry) override;
+
+  // void
+  // afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
+  //                 const shared_ptr<pit::Entry>& pitEntry) override;
+
+  bool
+  satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
+                            const FaceEndpoint& ingress, const Data& data,
+                            std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
+                            std::set<std::pair<Face*, EndpointId>>& unsatisfiedDownstreams) override;
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_INITIAL;

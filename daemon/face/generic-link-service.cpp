@@ -197,6 +197,14 @@ GenericLinkService::encodeLpFields(const ndn::PacketBase& netPkt, lp::Packet& lp
       lpPacket.add<lp::GeoTagField>(*geoTag);
     }
   }
+
+  shared_ptr<lp::FeedbackDataTag> feedbackDataTag = netPkt.getTag<lp::FeedbackDataTag>();
+  if (feedbackDataTag != nullptr) {
+    lpPacket.add<lp::FeedbackDataTagField>(*feedbackDataTag);
+  }
+  else {
+    lpPacket.add<lp::FeedbackDataTagField>(0);
+  }
 }
 
 void
@@ -430,6 +438,10 @@ GenericLinkService::decodeInterest(const Block& netPkt, const lp::Packet& firstP
 
   if (firstPkt.has<lp::PitTokenField>()) {
     interest->setTag(make_shared<lp::PitToken>(firstPkt.get<lp::PitTokenField>()));
+  }
+
+  if (firstPkt.has<lp::FeedbackDataTagField>()) {
+    interest->setTag(make_shared<lp::FeedbackDataTag>(firstPkt.get<lp::FeedbackDataTagField>()));
   }
 
   this->receiveInterest(*interest, endpointId);

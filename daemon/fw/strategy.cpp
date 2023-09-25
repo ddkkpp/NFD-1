@@ -167,7 +167,7 @@ Strategy::beforeSatisfyInterest(const Data& data, const FaceEndpoint& ingress,
                   << " in=" << ingress << " data=" << data.getName());
 }
 
-void
+bool
 Strategy::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
                           const FaceEndpoint& ingress, const Data& data,
                           std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
@@ -189,6 +189,7 @@ Strategy::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
 
   // invoke PIT satisfy callback
   beforeSatisfyInterest(data, ingress, pitEntry);
+  return true;
 }
 
 
@@ -247,6 +248,7 @@ Strategy::sendInterest(const Interest& interest, Face& egress, const shared_ptr<
 bool
 Strategy::sendData(const Data& data, Face& egress, const shared_ptr<pit::Entry>& pitEntry)
 {
+  NFD_LOG_DEBUG("send data");
   BOOST_ASSERT(pitEntry->getInterest().matchesData(data));
 
   shared_ptr<lp::PitToken> pitToken;

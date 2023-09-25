@@ -37,6 +37,7 @@
 #include <ndn-cxx/lp/tags.hpp>
 
 #include "face/null-face.hpp"
+#include <deque>
 
 namespace nfd {
 
@@ -96,42 +97,61 @@ Forwarder::~Forwarder() = default;
 void
 Forwarder::probe(const Interest& interest, const FaceEndpoint& ingress){
   NFD_LOG_DEBUG("start probing");
+  auto it = face_info.find(const_cast<FaceEndpoint&>(ingress));
   //由于F分布临界值没有直接的函数实现，所以之后直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实），这里的nSendTotalProbe如果改变后，后面的判定恶意的代码也要改变
-  for(size_t i=0;i<nSendTotalProbe;i++){
-    NFD_LOG_DEBUG("enter for");
-    shared_ptr<Name> nameWithSequence = make_shared<Name>(interest.getName().getPrefix(1));//前缀必须是已经注册过的，不然兴趣包没有转发路径
-    nameWithSequence->append("probe");
-    int seq=rand();
-    NFD_LOG_DEBUG("setSeq: "<<seq);
-    nameWithSequence->appendSequenceNumber(seq);
-    NFD_LOG_DEBUG("constucted name");
+  for(auto i=it->cachedContentName.begin();i!=it->cachedContentName.end();i++)
+  {
+    if(*i!=interest.getName())
+    {
+    shared_ptr<Name> nameWithSequence = make_shared<Name>(*i);
     shared_ptr<Interest> probe = make_shared<Interest>();
-    NFD_LOG_DEBUG("声明probe");
     uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
     probe->setNonce(nonce);
-    //probe->setNonce(m_rand->GetValue(0, std::numeric_limits<uint32_t>::max()-1));//不知道为什么运行到这里就崩溃了
     NFD_LOG_DEBUG("set nouce");
     probe->setName(*nameWithSequence);
-    NFD_LOG_DEBUG("set name");
-    //probe->setCanBeServedByCS(false);
     NFD_LOG_DEBUG("probe is"<<probe->getName());
-    NFD_LOG_DEBUG("readSeq: "<<probe->getName().get(2).toSequenceNumber());
-    // for(auto it =face_ei.left.begin();it!=face_ei.left.end();++it){
-    //   it->first->face.sendInterest(*probe, it->first->endpoint);
-    //   // it->first.face.sendInterest(*probe, it->first.endpoint);
+    
     ingress.face.sendInterest(*probe);
+    auto seq=probe->getName().get(1).toSequenceNumber();
     probeFilter.Add(seq,0);//记录probe的name
     NFD_LOG_DEBUG("add to probefilter: "<<seq);
-    // for(auto it =face_info.begin();it!=face_info.end();++it){
-    //   it->face.sendInterest(*probe, it->endpoint);
-    //   NFD_LOG_DEBUG("sendProbe to " << *it << " , probe=" << probe->getName());
-    //   // NFD_LOG_DEBUG("subname: "<<probe->getName().getSubName(1,1));
-    //   // NFD_LOG_DEBUG("stoi: "<<stoi(probe->getName().getSubName(1,1).toUri()));
-    //   // probeFilter.Add(atoi(nameWithSequence->toUri().c_str()),0);//记录probe的name
-    //   probeFilter.Add(seq,0);//记录probe的name
-    //   NFD_LOG_DEBUG("add to probefilter: "<<seq);
-    // }
+    }
   }
+  // for(size_t i=0;i<nSendTotalProbe;i++){
+  //   NFD_LOG_DEBUG("enter for");
+  //   shared_ptr<Name> nameWithSequence = make_shared<Name>(interest.getName().getPrefix(1));//前缀必须是已经注册过的，不然兴趣包没有转发路径
+  //   nameWithSequence->append("probe");
+  //   int seq=rand();
+  //   NFD_LOG_DEBUG("setSeq: "<<seq);
+  //   nameWithSequence->appendSequenceNumber(seq);
+  //   NFD_LOG_DEBUG("constucted name");
+  //   shared_ptr<Interest> probe = make_shared<Interest>();
+  //   NFD_LOG_DEBUG("声明probe");
+  //   uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
+  //   probe->setNonce(nonce);
+  //   //probe->setNonce(m_rand->GetValue(0, std::numeric_limits<uint32_t>::max()-1));//不知道为什么运行到这里就崩溃了
+  //   NFD_LOG_DEBUG("set nouce");
+  //   probe->setName(*nameWithSequence);
+  //   NFD_LOG_DEBUG("set name");
+  //   //probe->setCanBeServedByCS(false);
+  //   NFD_LOG_DEBUG("probe is"<<probe->getName());
+  //   NFD_LOG_DEBUG("readSeq: "<<probe->getName().get(2).toSequenceNumber());
+  //   // for(auto it =face_ei.left.begin();it!=face_ei.left.end();++it){
+  //   //   it->first->face.sendInterest(*probe, it->first->endpoint);
+  //   //   // it->first.face.sendInterest(*probe, it->first.endpoint);
+  //   ingress.face.sendInterest(*probe);
+  //   probeFilter.Add(seq,0);//记录probe的name
+  //   NFD_LOG_DEBUG("add to probefilter: "<<seq);
+  //   // for(auto it =face_info.begin();it!=face_info.end();++it){
+  //   //   it->face.sendInterest(*probe, it->endpoint);
+  //   //   NFD_LOG_DEBUG("sendProbe to " << *it << " , probe=" << probe->getName());
+  //   //   // NFD_LOG_DEBUG("subname: "<<probe->getName().getSubName(1,1));
+  //   //   // NFD_LOG_DEBUG("stoi: "<<stoi(probe->getName().getSubName(1,1).toUri()));
+  //   //   // probeFilter.Add(atoi(nameWithSequence->toUri().c_str()),0);//记录probe的name
+  //   //   probeFilter.Add(seq,0);//记录probe的name
+  //   //   NFD_LOG_DEBUG("add to probefilter: "<<seq);
+  //   // }
+  // }
 }
 
 void
@@ -152,11 +172,17 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
     // content_64+=((*i)<<(8*j));//用*i
     // j++;
     // }
-    uint64_t content=interest.getContentinFeedback();
-    NFD_LOG_DEBUG("Feedback aims at malicious content is : "<<content);
+    //interest.setTag(make_shared<lp::FeedbackDataTag>(0));
+    if(interest.getTag<lp::FeedbackDataTag>()==nullptr){
+      NFD_LOG_DEBUG("getTag = nullptr");
+    }
+    auto content_64=*(interest.getTag<lp::FeedbackDataTag>());
+    //uint64_t content=interest.getContentinFeedback();
+    NFD_LOG_DEBUG("Feedback aims at malicious content is : "<<content_64);
     uint32_t ei=0;
     //feedback携带的data是否在过滤器中
-    if(dataFilter.Contain(content, ei) == cuckoofilter::Ok){
+    if(dataFilter.Contain(content_64, ei) == cuckoofilter::Ok){
+    // if(dataFilter.Contain(content, ei) == cuckoofilter::Ok){
       NFD_LOG_DEBUG("feedback's content is in dataFilter, so Feedback is real");
       //方案中此处有对content签名的验证，实验上画图时只考虑用户诚实的方案开销，所以此处省略。
       //若考虑用户恶意，此处只需加上验证的延时（在转发策略sleep或schedule不会影响测量的延时，可以把延时加在app上）
@@ -169,10 +195,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
        NFD_LOG_DEBUG(*face_in_set<<" is target_face");
       // NFD_LOG_DEBUG(*target_face<<" is target_face");
       face_in_set->face.sendInterest(interest);
+
       // target_face->face.sendInterest(interest, target_face->endpoint);
-      //删除污染缓存，删除最大数量暂定为5，可能有风险（此处我只想删除匹配name的缓存，而erase函数的意义是删除匹配prefix的多个缓存）
+      //删除污染缓存，删除最大数量暂定为5，可能有风险
       // m_cs.erase(interest.getName(),5,bind(&Forwarder::onCsErase, this))   
       m_cs.erase(interest.getName(),5,[=] (size_t nErased){}) ;
+      //删除储存的邻居缓存中反馈的名字
+      //temp.cachedContentName.erase(interest.getName());
       NFD_LOG_DEBUG("forward feedback to target_face: "<<*face_in_set);
       //NFD_LOG_DEBUG("forward feedback to target_face: "<<*target_face);
       if((!face_in_set->isTarget)&&(!face_in_set->isMalicious)){
@@ -199,9 +228,10 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       //   isProbing=true;
       //   //开始探测
       //   probe(interest);
-      // }      
+      // }   
+    return;   
     }
-    return;
+    // return;   
   }
 
   // receive Interest
@@ -532,20 +562,20 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   {
     // FaceEndpoint fep=it->first;
     //shared_ptr<FaceEndpoint> fep=it->first;
-    //收到数据来自已经确定是恶意的端口，直接丢弃
     FaceEndpoint temp=*it;
     FaceEndpoint temp_old=*it;
+    //收到数据来自已经确定是恶意的端口，直接丢弃
     if(it->isMalicious){
       NFD_LOG_DEBUG("Receive data from malicious FaceEndpoint " << *it<<", drop it");
       return;
     }
-    //收到数据是探测数据包,计数后丢弃
+    //收到数据是探测数据包,计数
     uint32_t ei=0;
-    if(data.getName().size()>2)
-    {
-      if(probeFilter.Contain(data.getName().get(2).toSequenceNumber(),ei)==cuckoofilter::Ok)
+    // if(data.getName().size()>2)
+    // {
+      if(probeFilter.Contain(data.getName().get(1).toSequenceNumber(),ei)==cuckoofilter::Ok)
       {
-        NFD_LOG_DEBUG("dataname is in probefilter: "<<data.getName()<<", seq: "<<data.getName().get(2).toSequenceNumber());
+        NFD_LOG_DEBUG("dataname is in probefilter: "<<data.getName()<<", seq: "<<data.getName().get(1).toSequenceNumber());
         if(!isProbing){//探测结束
           return;
         }
@@ -553,8 +583,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 
         //数据为假
         // if(::ndn::readNonNegativeInteger(data.getSignature().getValue())==std::numeric_limits<uint32_t>::max()){
-        if(!(data.getIsFake())){
-          NFD_LOG_DEBUG("nReceiveInvalidProbeData in " << ingress<<" before is "<<it->nReceiveInvalidProbeData);
+        if(data.getSignatureInfo().getSignatureType()==1){
           temp.nReceiveInvalidProbeData+=1;
           //fep->nReceiveInvalidProbeData+=1;
           //face_ei.left.replace_key(it, fep);
@@ -566,6 +595,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         else{
           NFD_LOG_DEBUG("ProbeData is valid" << " data=" << data.getName());
         }
+        NFD_LOG_DEBUG("nReceiveInvalidProbeData in " << ingress<<" is "<<temp.nReceiveInvalidProbeData);
         temp.nReceiveTotalProbeData+=1;
         face_info.erase(*it);
         face_info.insert(temp);
@@ -573,10 +603,28 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         //face_ei.left.replace_key(it, fep);
         //++(face_ei.left.find(const_cast<FaceEndpoint*>(&ingress))->first->nReceiveTotalProbeData);
         //判断当前端口是否受到足够探测包
-        NFD_LOG_DEBUG("temp.nReceiveInvalidProbeData="<<temp.nReceiveTotalProbeData<<
-                      "temp.nSendTotalProbe"<<temp.nSendTotalProbe);
+        NFD_LOG_DEBUG("temp.nReceiveTotalProbeData="<<temp.nReceiveTotalProbeData<<
+                      " temp.nSendTotalProbe="<<temp.nSendTotalProbe);
         it = face_info.find(const_cast<FaceEndpoint&>(ingress));
-        if(temp.nReceiveTotalProbeData==temp.nSendTotalProbe)
+        //收到超过1个假包，则表明恶意
+        if(temp.nReceiveInvalidProbeData>1)
+        {
+          temp.isMalicious=true;
+          NFD_LOG_DEBUG("targetface " <<temp<< " is malicious");
+          isProbing=false;
+          temp.nReceiveInvalidProbeData=0;
+          temp.nReceiveTotalProbeData=0;
+          temp.receiveEnoughProbe=false;
+          face_info.erase(*it);
+          face_info.insert(temp);
+
+          auto& e =const_cast<fib::Entry&>(m_fib.findLongestPrefixMatch(data.getName()));//必须是引用类型，否则报错use of deleted function ‘nfd::fib::Entry::Entry(const nfd::fib::Entry&)
+          NFD_LOG_DEBUG("除去fib的恶意端口 entry.prefix() = "<<e.getPrefix());
+          // e.removeNextHop(ingress.face);
+          m_fib.removeNextHop(e, ingress.face);
+        }
+        //收到所有探测包后，还没收到超过一个假包，说明诚实
+        else if(temp.nReceiveTotalProbeData==temp.nSendTotalProbe)
         {
           //temp.receiveEnoughProbe=true;
           //face_ei.left.replace_key(it, fep);
@@ -597,14 +645,9 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         //判断targetFace是否是恶意端口
         //由于F分布临界值没有直接的函数实现，所以这里直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实）
 
-          if(it->nReceiveInvalidProbeData>1){
-            temp.isMalicious=true;
-            NFD_LOG_DEBUG("targetface " <<temp<< " is malicious");
-          }
-          else{
-            NFD_LOG_DEBUG("targetface " <<temp<< " is honest");
-          }
-          temp.isTarget=false;
+          NFD_LOG_DEBUG("targetface " <<temp<< " is honest");
+ 
+          //temp.isTarget=false;正在探测和探测结束，都不再对反馈作出开始探测的反应
           isProbing=false;
           temp.nReceiveInvalidProbeData=0;
           temp.nReceiveTotalProbeData=0;
@@ -659,8 +702,9 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         //   }
         // }
         // allFaceReceiveEnoughProbe=false;
-        return;
-      }
+
+        //return;
+      // }
     }
     //端口正在探测且是普通数据包：直接丢弃
     else if(ingress.isTarget){
@@ -693,6 +737,19 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 
   // CS insert
   m_cs.insert(data);
+
+  //保存邻居缓存内容的名字
+  it = face_info.find(const_cast<FaceEndpoint&>(ingress));
+  if(it!=face_info.end())
+  {
+    FaceEndpoint temp=*it;
+    if(temp.cachedContentName.size()==deque_capacity){
+      temp.cachedContentName.pop_front();
+    }
+    temp.cachedContentName.push_back(data.getName());
+    face_info.erase(*it);
+    face_info.insert(temp);
+  }
 
 //此处实现将data插入布谷鸟过滤器
   uint64_t content_64=0;//加入过滤器的元素
@@ -739,6 +796,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       NFD_LOG_DEBUG("ei_now"<<ei_now);
     }
   }
+
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
   std::multimap<std::pair<Face*, EndpointId>, std::shared_ptr<pit::Entry>> unsatisfiedPitEntries;
 
@@ -749,7 +807,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     beforeSatisfyInterest(*pitEntry, ingress.face, data);
 
     std::set<std::pair<Face*, EndpointId>> unsatisfiedDownstreams;
-    m_strategyChoice.findEffectiveStrategy(*pitEntry).satisfyInterest(pitEntry, ingress, data,
+    m_isHonest=m_strategyChoice.findEffectiveStrategy(*pitEntry).satisfyInterest(pitEntry, ingress, data,
                                                                       satisfiedDownstreams, unsatisfiedDownstreams);
     for (const auto& endpoint : unsatisfiedDownstreams) {
       unsatisfiedPitEntries.emplace(endpoint, pitEntry);
@@ -793,6 +851,16 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     }
   }
 
+  shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
+  if(!m_isHonest)
+  {
+    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
+    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
+
+    data1->setSignatureInfo(*signatureInfo1);
+    NFD_LOG_DEBUG("modify signature maliciously, data=" << data.getName());
+    NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
+  }
   // foreach pending downstream
   for (const auto& downstream : satisfiedDownstreams) {
     if (downstream.first->getId() == ingress.face.getId() &&
@@ -801,7 +869,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       continue;
     }
 
-    this->onOutgoingData(data, *downstream.first);
+    this->onOutgoingData(*data1, *downstream.first);//注意这里data改成了data_
   }
 }
 

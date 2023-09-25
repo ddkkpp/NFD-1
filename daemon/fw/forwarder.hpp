@@ -285,7 +285,9 @@ private:
   std::set<FaceEndpoint> face_info;//存储可修改（删除然后插入）的FaceInfo
   bool isProbing=false;
   bool allFaceReceiveEnoughProbe=false;
+  bool m_isHonest=true;
   ::ns3::Ptr<::ns3::UniformRandomVariable> m_rand;
+  size_t deque_capacity=11;
 
 
 

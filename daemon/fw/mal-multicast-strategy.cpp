@@ -96,7 +96,8 @@ MalMulticastStrategy::afterReceiveData(const Data& data, const FaceEndpoint& ing
 {
     NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
     auto data_ = const_cast<Data&>(data);
-    data_.setFake();
+    // data_.setFake();
+    // NFD_LOG_DEBUG("isFake = "<<data_.getIsFake());
 
     this->beforeSatisfyInterest(data_, ingress, pitEntry);
     this->sendDataToAll(data_, pitEntry, ingress.face);

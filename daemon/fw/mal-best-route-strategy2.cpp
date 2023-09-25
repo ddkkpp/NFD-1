@@ -129,16 +129,67 @@ MalBestRouteStrategy2::afterReceiveNack(const lp::Nack& nack, const FaceEndpoint
   this->processNack(nack, ingress.face, pitEntry);
 }
 
-void
-MalBestRouteStrategy2::afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
-                  const shared_ptr<pit::Entry>& pitEntry)
+bool
+MalBestRouteStrategy2::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
+                          const FaceEndpoint& ingress, const Data& data,
+                          std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
+                          std::set<std::pair<Face*, EndpointId>>& unsatisfiedDownstreams)
 {
-    NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
-    auto data_ = const_cast<Data&>(data);
-    data_.setFake();
+  NFD_LOG_DEBUG("satisfyInterest pitEntry=" << pitEntry->getName()
+                << " in=" << ingress << " data=" << data.getName());
 
-    this->beforeSatisfyInterest(data_, ingress, pitEntry);
-    this->sendDataToAll(data_, pitEntry, ingress.face);
+  NFD_LOG_DEBUG("onIncomingData matching=" << pitEntry->getName());
+
+  auto now = time::steady_clock::now();
+
+  // remember pending downstreams
+  for (const pit::InRecord& inRecord : pitEntry->getInRecords()) {
+    if (inRecord.getExpiry() > now) {
+      satisfiedDownstreams.emplace(&inRecord.getFace(), 0);
+    }
+  }
+
+  // invoke PIT satisfy callback
+  beforeSatisfyInterest(data, ingress, pitEntry);
+  return false;
+}
+
+// void
+// MalBestRouteStrategy2::afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
+//                   const shared_ptr<pit::Entry>& pitEntry)
+// {
+//     NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
+//     auto data_ = const_cast<Data&>(data);
+//     data_.setFake();
+
+//     this->beforeSatisfyInterest(data_, ingress, pitEntry);
+//     this->sendDataToAll(data_, pitEntry, ingress.face);
+// }
+
+// void
+// MalBestRouteStrategy2::beforeSatisfyInterest(const Data& data, const FaceEndpoint& ingress,
+//                                 const shared_ptr<pit::Entry>& pitEntry)
+// {
+//     NFD_LOG_DEBUG("beforeSatisfyInterest pitEntry=" << pitEntry->getName()
+//                   << " in=" << ingress << " data=" << data.getName());
+//     auto data_ = const_cast<Data&>(data);
+//     data_.setFake();
+//     NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
+//     this->beforeSatisfyInterest(data_, ingress, pitEntry);
+//     this->sendDataToAll(data_, pitEntry, ingress.face);
+// }
+
+bool
+MalBestRouteStrategy2::sendData(const Data& data, Face& egress, const shared_ptr<pit::Entry>& pitEntry)
+{
+    shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
+    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
+    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
+
+    data1->setSignatureInfo(*signatureInfo1);
+    NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
+    NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
+    return Strategy::sendData(*data1, egress, pitEntry);
 }
 
 } // namespace fw

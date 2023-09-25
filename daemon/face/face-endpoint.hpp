@@ -27,6 +27,8 @@
 #define NFD_DAEMON_FACE_FACE_ENDPOINT_HPP
 
 #include "face.hpp"
+#include <deque>
+#include<set>
 
 namespace nfd {
 
@@ -62,7 +64,11 @@ public:
   size_t nSendTotalProbe=10;//发送总的探测包数量
   double rateofReceivetoSend=0.9;
   bool receiveEnoughProbe=false;
-  bool isMalicious;
+  bool isMalicious=false;
+  std::deque<::ndn::Name> cachedContentName;
+  //std::set<::ndn::Name> cachedContentName;
+
+
 };
 
 // class myCompare
