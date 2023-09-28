@@ -38,6 +38,7 @@
 
 #include "face/null-face.hpp"
 #include <deque>
+#include <thread>
 
 namespace nfd {
 
@@ -99,7 +100,7 @@ Forwarder::probe(const Interest& interest, const FaceEndpoint& ingress){
   NFD_LOG_DEBUG("start probing");
   auto it = face_info.find(const_cast<FaceEndpoint&>(ingress));
   //由于F分布临界值没有直接的函数实现，所以之后直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实），这里的nSendTotalProbe如果改变后，后面的判定恶意的代码也要改变
-  for(auto i=it->cachedContentName.begin();i!=it->cachedContentName.end();i++)
+  for(auto i=it->cachedContentName.rbegin();i!=it->cachedContentName.rend();i++)
   {
     if(*i!=interest.getName())
     {
@@ -194,7 +195,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       //将反馈转发出去
        NFD_LOG_DEBUG(*face_in_set<<" is target_face");
       // NFD_LOG_DEBUG(*target_face<<" is target_face");
-      face_in_set->face.sendInterest(interest);
+      if(finishProbing&&!face_in_set->isMalicious){//结束探测才转发反馈，否则保存反馈
+        NFD_LOG_DEBUG("此时探测已经结束，可以转发反馈");
+        face_in_set->face.sendInterest(interest);
+      }
+      else{
+        NFD_LOG_DEBUG("此时探测未结束，不能转发反馈");
+        //laterFbFace=face_in_set->face;
+        laterFeedback.push_back(interest);
+      }
 
       // target_face->face.sendInterest(interest, target_face->endpoint);
       //删除污染缓存，删除最大数量暂定为5，可能有风险
@@ -451,6 +460,8 @@ Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
 void
 Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 {  
+  //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
   // auto it = face_ei.left.find(ingress);
   // if(it!=face_ei.left.end())
   // {
@@ -583,6 +594,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 
         //数据为假
         // if(::ndn::readNonNegativeInteger(data.getSignature().getValue())==std::numeric_limits<uint32_t>::max()){
+        NFD_LOG_DEBUG("signature = "<<data.getSignatureInfo().getSignatureType());
         if(data.getSignatureInfo().getSignatureType()==1){
           temp.nReceiveInvalidProbeData+=1;
           //fep->nReceiveInvalidProbeData+=1;
@@ -617,11 +629,16 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
           temp.receiveEnoughProbe=false;
           face_info.erase(*it);
           face_info.insert(temp);
+          finishProbing=true;
 
           auto& e =const_cast<fib::Entry&>(m_fib.findLongestPrefixMatch(data.getName()));//必须是引用类型，否则报错use of deleted function ‘nfd::fib::Entry::Entry(const nfd::fib::Entry&)
           NFD_LOG_DEBUG("除去fib的恶意端口 entry.prefix() = "<<e.getPrefix());
           // e.removeNextHop(ingress.face);
           m_fib.removeNextHop(e, ingress.face);
+          //如果本节点就是恶意，则上游节点都是诚实且缓存都是真的，不必转发反馈以清除缓存和开启探测
+          // for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
+          //   ingress.face.sendInterest(*i);
+          // }
         }
         //收到所有探测包后，还没收到超过一个假包，说明诚实
         else if(temp.nReceiveTotalProbeData==temp.nSendTotalProbe)
@@ -655,6 +672,11 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
           face_info.erase(*it);
           face_info.insert(temp);
           
+          finishProbing=true;
+          //探测完成后再转发反馈
+          for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
+            ingress.face.sendInterest(*i);
+          }
         }
         // if(allFaceReceiveEnoughProbe){
         //   NFD_LOG_DEBUG("Receive enough ProbeData in all interfaces");
@@ -861,6 +883,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     NFD_LOG_DEBUG("modify signature maliciously, data=" << data.getName());
     NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
   }
+  
   // foreach pending downstream
   for (const auto& downstream : satisfiedDownstreams) {
     if (downstream.first->getId() == ingress.face.getId() &&
@@ -868,8 +891,12 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         downstream.first->getLinkType() != ndn::nfd::LINK_TYPE_AD_HOC) {
       continue;
     }
-
-    this->onOutgoingData(*data1, *downstream.first);//注意这里data改成了data_
+    this->onOutgoingData(*data1, *downstream.first);
+  //     bool (*p)(const ndn::Data&,  nfd::face::Face&)=this;
+  // ns3::Simulator::Schedule(ns3::Seconds(1),p, *data1, *downstream.first);
+//   nfd::face::Face& fe = *downstream.first;
+//ns3::Simulator::Schedule(ns3::Seconds(1),&nfd::Forwarder::onOutgoingData, this, *data1, *downstream.first);
+    //ns3::Simulator::Schedule(ns3::Seconds(1), [this,data1,downstream]{this->onOutgoingData(*data1,*downstream.first);},*data1,*downstream.first);
   }
 }
 
@@ -910,6 +937,55 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
   // TODO traffic manager
 
   // send Data
+
+  //1. make-event.h:426:59: error: ‘((ns3::MakeEvent(MEM, OBJ, T1) [with MEM = nfd::Forwarder::onOutgoingData(const ndn::Data&, nfd::face::Face&)::<lambda()>; 
+  //OBJ = nfd::Forwarder*; T1 = ndn::Data]::EventMemberImpl1*)this)->ns3::MakeEvent(MEM, OBJ, T1) [with MEM = nfd::Forwarder::onOutgoingData(const ndn::Data&, nfd::face::Face&)::<lambda()>; 
+  //OBJ = nfd::Forwarder*; T1 = ndn::Data]::EventMemberImpl1::m_function’ cannot be used as a member pointer, since it is of type ‘nfd::Forwarder::onOutgoingData(const ndn::Data&, nfd::face::Face&)::<lambda()>’
+  //2./usr/include/c++/9/ext/new_allocator.h:146:4: error: use of deleted function ‘nfd::face::Face::Face(const nfd::face::Face&)
+  // auto face1=make_shared<Face>(const_cast<Face&>(egress));
+  // auto lamda=[face1,data](){face1->sendData(data);};
+  // ns3::Simulator::Schedule(ns3::Seconds(1),lamda, this, data);
+
+  //1.make-event.h:396:52: error: incomplete type ‘ns3::EventMemberImplObjTraits<ndn::Data>’ used in nested name specifier
+  //2.usr/include/c++/9/ext/new_allocator.h:146:4: error: use of deleted function ‘nfd::face::Face::Face(const nfd::face::Face&)
+  // auto face1=make_shared<Face>(const_cast<Face&>(egress));
+  // auto lamda=[face1,data](){face1->sendData(data);};
+  // ns3::Simulator::Schedule(ns3::Seconds(1),lamda, data);
+
+  //forwarder.cpp:953:27: error: invalid use of non-static member function ‘void nfd::face::Face::sendData(const ndn::Data&)’
+  // auto b=std::bind(egress.sendData, data);
+
+  // auto face1=make_shared<Face>(const_cast<Face&>(egress));
+  // auto b=std::bind(face1->sendData, data);
+  // ns3::Simulator::Schedule(ns3::Seconds(1),b, data);
+
+  //make-event.h:396:52: error: incomplete type ‘ns3::EventMemberImplObjTraits<ndn::Data>’ used in nested name specifier
+  // std::function<void()> fooBar = [egress,&data]() { egress.sendData(data); };
+  // std::function<void()> fooBar = [&]() { egress.sendData(data); };
+  // ns3::Simulator::Schedule(ns3::Seconds(1),fooBar, data);
+
+  //1.forwarder.cpp:961:72: error: passing ‘const nfd::face::Face’ as ‘this’ argument discards qualifiers [-fpermissive]
+  //2. error: use of deleted function ‘nfd::face::Face::Face(const nfd::face::Face&)’
+  // std::function<void()> fooBar = [egress,data]() { egress.sendData(data); };
+
+
+  //forwarder.cpp:954:14: error: use of deleted function ‘nfd::face::Face::Face(const nfd::face::Face&)
+  // auto lamda=[egress,data](){const_cast<Face&>(egress).sendData(data);};
+
+  //forwarder.cpp:954:50: error: passing ‘const nfd::face::Face’ as ‘this’ argument discards qualifiers 
+  //auto lamda=[egress,data](){const_cast<Face&>(egress).sendData(data);};
+
+
+  //make-event.h:396:52: error: incomplete type ‘ns3::EventMemberImplObjTraits<ndn::Data>’ used in nested name specifier(大概是嵌套名称标识符中，未声明就使用的意思)
+  // void (nfd::face::Face::*p)(const ndn::Data&)=&nfd::face::Face::sendData;
+  // ns3::Simulator::Schedule(ns3::Seconds(1), p, data);
+
+  //ns3::Simulator::Schedule(ns3::Seconds(1), nfd::face::Face::sendData, data);
+
+  //make-event.h:426:59: error: pointer to member type ‘void (nfd::face::Face::)(const ndn::Data&)’ incompatible with object type ‘nfd::Forwarder’
+  // void (nfd::face::Face::*p)(const ndn::Data&)=&nfd::face::Face::sendData;
+  // ns3::Simulator::Schedule(ns3::Seconds(1), p, this, data);
+
   egress.sendData(data);
   ++m_counters.nOutData;
 

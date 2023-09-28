@@ -27,6 +27,9 @@
 #define NFD_DAEMON_TABLE_CS_HPP
 
 #include "cs-policy.hpp"
+#include <ndn-cxx/lp/tags.hpp>
+#include "cuckoofilter/cuckoofilter.h"
+#include <string>
 
 namespace nfd {
 namespace cs {
@@ -51,6 +54,9 @@ public:
    */
   void
   insert(const Data& data, bool isUnsolicited = false);
+
+  void
+  csVerify(shared_ptr<ndn::Data> data1);
 
   /** \brief asynchronously erases entries under \p prefix
    *  \tparam AfterEraseCallback `void f(size_t nErased)`
@@ -77,15 +83,22 @@ public:
    *        The callback may be invoked either before or after find() returns
    */
   template<typename HitCallback, typename MissCallback>
-  void
-  find(const Interest& interest, HitCallback&& hit, MissCallback&& miss) const
+  void//去掉了find函数的const修饰符，以便在里面使用erase函数
+  find(const Interest& interest, HitCallback&& hit, MissCallback&& miss) 
   {
     auto match = findImpl(interest);
     if (match == m_table.end()) {
       miss(interest);
       return;
     }
-    hit(interest, match->getData());
+
+    shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
+    //hpp文件无法使用NFD_LOG，所以在cpp中实现
+    csVerify(data1);
+
+
+
+    hit(interest, *data1);
   }
 
   /** \brief get number of stored packets
@@ -196,6 +209,7 @@ private:
 
   bool m_shouldAdmit = true; ///< if false, no Data will be admitted
   bool m_shouldServe = true; ///< if false, all lookups will miss
+  cuckoofilter::CuckooFilter<uint64_t, 12> hasVerifiedFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(10000);
 };
 
 } // namespace cs

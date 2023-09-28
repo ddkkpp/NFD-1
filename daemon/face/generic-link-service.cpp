@@ -205,6 +205,14 @@ GenericLinkService::encodeLpFields(const ndn::PacketBase& netPkt, lp::Packet& lp
   else {
     lpPacket.add<lp::FeedbackDataTagField>(0);
   }
+
+  shared_ptr<lp::ExtraDelayTag> extraDelayTag = netPkt.getTag<lp::ExtraDelayTag>();
+  if (extraDelayTag != nullptr) {
+    lpPacket.add<lp::ExtraDelayTagField>(*extraDelayTag);
+  }
+  else {
+    lpPacket.add<lp::ExtraDelayTagField>(0);
+  }
 }
 
 void
@@ -504,6 +512,10 @@ GenericLinkService::decodeData(const Block& netPkt, const lp::Packet& firstPkt,
     else {
       NFD_LOG_FACE_WARN("received PrefixAnnouncement, but self-learning disabled: IGNORE");
     }
+  }
+
+  if (firstPkt.has<lp::ExtraDelayTagField>()) {
+    data->setTag(make_shared<lp::ExtraDelayTag>(firstPkt.get<lp::ExtraDelayTagField>()));
   }
 
   this->receiveData(*data, endpointId);

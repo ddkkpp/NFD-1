@@ -40,8 +40,11 @@
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
 #include "ns3/random-variable-stream.h"
-#include<map>
+#include <map>
 #include <set>
+#include <vector>
+#include "ndn-cxx/util/scheduler.hpp"
+#include "ns3/simulator.h"
 #include <boost/bimap.hpp>//必须放在最后include，不然error:reference to ‘_1’ is ambiguous,extern const _Placeholder<3> _3;
 
 namespace nfd {
@@ -287,7 +290,11 @@ private:
   bool allFaceReceiveEnoughProbe=false;
   bool m_isHonest=true;
   ::ns3::Ptr<::ns3::UniformRandomVariable> m_rand;
-  size_t deque_capacity=11;
+  size_t deque_capacity=11;//反馈的包不能用于探测，因为不在邻居缓存中
+  //face::Face& laterFbFace;
+  std::vector<ndn::Interest> laterFeedback;
+  bool finishProbing=false;
+  //ndn::Scheduler s;
 
 
 

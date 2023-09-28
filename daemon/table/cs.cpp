@@ -181,5 +181,42 @@ Cs::enableServe(bool shouldServe)
   NFD_LOG_INFO((shouldServe ? "Enabling" : "Disabling") << " Data serving");
 }
 
+void
+Cs::csVerify(shared_ptr<ndn::Data> data1)
+{ 
+    auto hc=0;
+    auto hopCountTag = data1->getTag<lp::HopCountTag>();
+    if (hopCountTag != nullptr) { // e.g., packet came from local node's cache
+      data1->setTag(make_shared<lp::HopCountTag>(hc));
+    }
+    uint32_t ei=0;
+    uint64_t seq=data1->getName().get(-1).toSequenceNumber();
+    // auto str=data1->getName().toUri(ndn::name::UriFormat::CANONICAL);
+    // char* p;
+    // uint64_t name=std::strtoul(str.c_str(), &p, 10);//使用stoul报错
+    // NFD_LOG_DEBUG("name变成str: "<<str.c_str());
+
+    //只插入seq，不适用于为网络存在多个prefix的情况
+  if(hasVerifiedFilter.Contain(seq, ei)==0){
+      NFD_LOG_DEBUG("命中缓存在过滤器中找到，无需验证"<<seq);
+  }
+  else{
+    NFD_LOG_DEBUG("命中缓存没有在过滤器中找到，需要验证"<<seq);
+    data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
+  }
+  //如果命中缓存是假包，把SignatureTypeValue改为100，表示NACK
+  if(data1->getSignatureInfo().getSignatureType()==1){
+    NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
+    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data1->getSignatureInfo()));
+    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示我验证过的假包
+    data1->setSignatureInfo(*signatureInfo1);
+    this->erase(data1->getName(),5,[=] (size_t nErased){}) ;//删除污染缓存
+  }
+  else{
+    NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName()<<" 插入过滤器"<<seq);
+    hasVerifiedFilter.Add(seq,ei);
+  }
+}
+
 } // namespace cs
 } // namespace nfd
