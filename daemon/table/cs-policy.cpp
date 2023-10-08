@@ -69,35 +69,36 @@ Policy::setLimit(size_t nMaxEntries)
 {
   NFD_LOG_INFO("setLimit " << nMaxEntries);
   m_limit = nMaxEntries;
-  this->evictEntries();
+  this->evictEntries(protectedRegion);
+  this->evictEntries(unprotectedRegion);
 }
 
 void
-Policy::afterInsert(EntryRef i)
+Policy::afterInsert(EntryRef i, enum csRegion j)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doAfterInsert(i);
+  this->doAfterInsert(i, j);
 }
 
 void
-Policy::afterRefresh(EntryRef i)
+Policy::afterRefresh(EntryRef i, enum csRegion j)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doAfterRefresh(i);
+  this->doAfterRefresh(i, j);
 }
 
 void
-Policy::beforeErase(EntryRef i)
+Policy::beforeErase(EntryRef i, enum csRegion j)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doBeforeErase(i);
+  this->doBeforeErase(i, j);
 }
 
 void
-Policy::beforeUse(EntryRef i)
+Policy::beforeUse(EntryRef i, enum csRegion j)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doBeforeUse(i);
+  this->doBeforeUse(i, j);
 }
 
 } // namespace cs

@@ -47,33 +47,33 @@ PriorityFifoPolicy::~PriorityFifoPolicy()
 }
 
 void
-PriorityFifoPolicy::doAfterInsert(EntryRef i)
+PriorityFifoPolicy::doAfterInsert(EntryRef i, enum csRegion j)
 {
   this->attachQueue(i);
-  this->evictEntries();
+  this->evictEntries(j);
 }
 
 void
-PriorityFifoPolicy::doAfterRefresh(EntryRef i)
+PriorityFifoPolicy::doAfterRefresh(EntryRef i, enum csRegion j)
 {
   this->detachQueue(i);
   this->attachQueue(i);
 }
 
 void
-PriorityFifoPolicy::doBeforeErase(EntryRef i)
+PriorityFifoPolicy::doBeforeErase(EntryRef i, enum csRegion j)
 {
   this->detachQueue(i);
 }
 
 void
-PriorityFifoPolicy::doBeforeUse(EntryRef i)
+PriorityFifoPolicy::doBeforeUse(EntryRef i, enum csRegion j)
 {
   BOOST_ASSERT(m_entryInfoMap.find(i) != m_entryInfoMap.end());
 }
 
 void
-PriorityFifoPolicy::evictEntries()
+PriorityFifoPolicy::evictEntries(enum csRegion j)
 {
   BOOST_ASSERT(this->getCs() != nullptr);
 
@@ -101,7 +101,7 @@ PriorityFifoPolicy::evictOne()
   }
 
   this->detachQueue(i);
-  this->emitSignal(beforeEvict, i);
+  this->emitSignal(beforeEvict_unp, i);
 }
 
 void

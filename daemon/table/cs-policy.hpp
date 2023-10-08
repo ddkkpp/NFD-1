@@ -27,9 +27,14 @@
 #define NFD_DAEMON_TABLE_CS_POLICY_HPP
 
 #include "cs-entry.hpp"
-
-namespace nfd {
+namespace nfd { 
 namespace cs {
+
+//cs分区在cs和cs-policy都需要使用，而cs引用cs-policy头文件，所以csRegion在cs-policy头文件定义
+enum csRegion : uint16_t {
+  protectedRegion =0,
+  unprotectedRegion =1,
+};
 
 class Cs;
 
@@ -115,7 +120,8 @@ public:
    *  A policy implementation should emit this signal to cause CS to erase an entry from its index.
    *  CS should connect to this signal and erase the entry upon signal emission.
    */
-  signal::Signal<Policy, EntryRef> beforeEvict;
+  signal::Signal<Policy, EntryRef> beforeEvict_prt;
+  signal::Signal<Policy, EntryRef> beforeEvict_unp;
 
   /** \brief invoked by CS after a new entry is inserted
    *  \post cs.size() <= getLimit()
@@ -124,27 +130,27 @@ public:
    *  During this process, \p i might be evicted.
    */
   void
-  afterInsert(EntryRef i);
+  afterInsert(EntryRef i, enum cs::csRegion j);
 
   /** \brief invoked by CS after an existing entry is refreshed by same Data
    *
    *  The policy may witness this refresh to make better eviction decisions in the future.
    */
   void
-  afterRefresh(EntryRef i);
+  afterRefresh(EntryRef i, enum csRegion j);
 
   /** \brief invoked by CS before an entry is erased due to management command
    *  \warning CS must not invoke this method if an entry is erased due to eviction.
    */
   void
-  beforeErase(EntryRef i);
+  beforeErase(EntryRef i, enum csRegion j);
 
   /** \brief invoked by CS before an entry is used to match a lookup
    *
    *  The policy may witness this usage to make better eviction decisions in the future.
    */
   void
-  beforeUse(EntryRef i);
+  beforeUse(EntryRef i, enum csRegion j);
 
 protected:
   /** \brief invoked after a new entry is created in CS
@@ -156,7 +162,7 @@ protected:
    *  in order to keep CS size under limit.
    */
   virtual void
-  doAfterInsert(EntryRef i) = 0;
+  doAfterInsert(EntryRef i, enum csRegion j) = 0;
 
   /** \brief invoked after an existing entry is refreshed by same Data
    *
@@ -164,7 +170,7 @@ protected:
    *  and adjust its cleanup index.
    */
   virtual void
-  doAfterRefresh(EntryRef i) = 0;
+  doAfterRefresh(EntryRef i, enum csRegion j) = 0;
 
   /** \brief invoked before an entry is erased due to management command
    *  \note This will not be invoked for an entry being evicted by policy.
@@ -173,7 +179,7 @@ protected:
    *  from its cleanup index without emitted \p afterErase signal.
    */
   virtual void
-  doBeforeErase(EntryRef i) = 0;
+  doBeforeErase(EntryRef i, enum csRegion j) = 0;
 
   /** \brief invoked before an entry is used to match a lookup
    *
@@ -181,16 +187,17 @@ protected:
    *  and adjust its cleanup index.
    */
   virtual void
-  doBeforeUse(EntryRef i) = 0;
+  doBeforeUse(EntryRef i, enum csRegion j) = 0;
 
   /** \brief evicts zero or more entries
    *  \post CS size does not exceed hard limit
    */
   virtual void
-  evictEntries() = 0;
+  evictEntries(enum csRegion j) = 0;
 
 protected:
-  DECLARE_SIGNAL_EMIT(beforeEvict)
+  DECLARE_SIGNAL_EMIT(beforeEvict_prt)
+  DECLARE_SIGNAL_EMIT(beforeEvict_unp)
 
 private: // registry
   using CreateFunc = std::function<unique_ptr<Policy>()>;

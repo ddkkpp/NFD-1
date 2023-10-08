@@ -309,11 +309,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   // }
   //is pending?
   if (!pitEntry->hasInRecords()) {
+    NFD_LOG_DEBUG("没有PIT");
     m_cs.find(interest,
               [=] (const Interest& i, const Data& d) { onContentStoreHit(i, ingress, pitEntry, d); },
               [=] (const Interest& i) { onContentStoreMiss(i, ingress, pitEntry); });
   }
   else {
+    NFD_LOG_DEBUG("有PIT");
     this->onContentStoreMiss(interest, ingress, pitEntry);
   }
 }

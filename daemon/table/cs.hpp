@@ -34,6 +34,7 @@
 namespace nfd {
 namespace cs {
 
+
 /** \brief implements the Content Store
  *
  *  This Content Store implementation consists of a Table and a replacement policy.
@@ -86,13 +87,19 @@ public:
   void//去掉了find函数的const修饰符，以便在里面使用erase函数
   find(const Interest& interest, HitCallback&& hit, MissCallback&& miss) 
   {
-    auto match = findImpl(interest);
-    if (match == m_table.end()) {
+    csRegion i=protectedRegion;
+    auto match = findImpl(interest, &i);
+    if ((match == m_table_prt.end())||(match == m_table_unp.end())) {
       miss(interest);
       return;
     }
-
+    
     shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
+
+    //如果命中的是非保护区，则需要验证时延
+    if(i==unprotectedRegion){
+      data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));
+    }
     //hpp文件无法使用NFD_LOG，所以在cpp中实现
     csVerify(data1);
 
@@ -106,7 +113,20 @@ public:
   size_t
   size() const
   {
-    return m_table.size();
+    return m_table_prt.size() + m_table_unp.size() ;
+  }
+
+
+  size_t
+  size_prt() const
+  {
+    return m_table_prt.size() ;
+  }
+
+  size_t
+  size_unp() const
+  {
+    return  m_table_unp.size();
   }
 
 public: // configuration
@@ -174,26 +194,51 @@ public: // enumeration
   using const_iterator = Table::const_iterator;
 
   const_iterator
+  begin_prt() const
+  {
+    return m_table_prt.begin();
+  }
+
+  const_iterator
+  end_prt() const
+  {
+    return m_table_prt.end();
+  }
+
+  const_iterator
+  begin_unp() const
+  {
+    return m_table_unp.begin();
+  }
+
+  const_iterator
+  end_unp() const
+  {
+    return m_table_unp.end();
+  }
+
+  //保留原始的begin和end，不然报错src/ndnSIM/bindings/ns3module.cc:2028:39: error: ‘class nfd::cs::Cs’ has no member named ‘end’
+  const_iterator
   begin() const
   {
-    return m_table.begin();
+    return m_table_unp.begin();
   }
 
   const_iterator
   end() const
   {
-    return m_table.end();
+    return m_table_unp.end();
   }
 
 private:
   std::pair<const_iterator, const_iterator>
-  findPrefixRange(const Name& prefix) const;
+  findPrefixRange(const Name& prefix, enum csRegion i) const;
 
   size_t
   eraseImpl(const Name& prefix, size_t limit);
 
   const_iterator
-  findImpl(const Interest& interest) const;
+  findImpl(const Interest& interest, enum csRegion* i) const;
 
   void
   setPolicyImpl(unique_ptr<Policy> policy);
@@ -203,9 +248,11 @@ NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   dump();
 
 private:
-  Table m_table;
+  Table m_table_prt;//保护区cs
+  Table m_table_unp;//非保护区cs
   unique_ptr<Policy> m_policy;
-  signal::ScopedConnection m_beforeEvictConnection;
+  signal::ScopedConnection m_beforeEvictConnection_prt;
+  signal::ScopedConnection m_beforeEvictConnection_unp;
 
   bool m_shouldAdmit = true; ///< if false, no Data will be admitted
   bool m_shouldServe = true; ///< if false, all lookups will miss

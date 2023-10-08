@@ -56,28 +56,29 @@ public:
 
 private:
   void
-  doAfterInsert(EntryRef i) final;
+  doAfterInsert(EntryRef i, enum csRegion j) final;
 
   void
-  doAfterRefresh(EntryRef i) final;
+  doAfterRefresh(EntryRef i, enum csRegion j) final;
 
   void
-  doBeforeErase(EntryRef i) final;
+  doBeforeErase(EntryRef i, enum csRegion j) final;
 
   void
-  doBeforeUse(EntryRef i) final;
+  doBeforeUse(EntryRef i, enum csRegion j) final;
 
   void
-  evictEntries() final;
+  evictEntries(enum csRegion j) final;
 
 private:
   /** \brief moves an entry to the end of queue
    */
   void
-  insertToQueue(EntryRef i, bool isNewEntry);
+  insertToQueue(EntryRef i, bool isNewEntry, enum csRegion j);
 
 private:
-  Queue m_queue;
+  Queue m_queue_prt;//保护区
+  Queue m_queue_unp;//非保护区
 };
 
 } // namespace lru

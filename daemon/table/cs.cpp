@@ -44,7 +44,7 @@ makeDefaultPolicy()
 Cs::Cs(size_t nMaxPackets)
 {
   setPolicyImpl(makeDefaultPolicy());
-  m_policy->setLimit(nMaxPackets);
+  m_policy->setLimit(nMaxPackets/2);//每个cs区域分配一半大小
 }
 
 void
@@ -66,7 +66,7 @@ Cs::insert(const Data& data, bool isUnsolicited)
 
   const_iterator it;
   bool isNewEntry = false;
-  std::tie(it, isNewEntry) = m_table.emplace(data.shared_from_this(), isUnsolicited);
+  std::tie(it, isNewEntry) = m_table_unp.emplace(data.shared_from_this(), isUnsolicited);//插入非保护区
   Entry& entry = const_cast<Entry&>(*it);
 
   entry.updateFreshUntil();
@@ -77,65 +77,128 @@ Cs::insert(const Data& data, bool isUnsolicited)
       entry.clearUnsolicited();
     }
 
-    m_policy->afterRefresh(it);
+    m_policy->afterRefresh(it, unprotectedRegion);
   }
   else {
-    m_policy->afterInsert(it);
+    m_policy->afterInsert(it, unprotectedRegion);
   }
 }
 
 std::pair<Cs::const_iterator, Cs::const_iterator>
-Cs::findPrefixRange(const Name& prefix) const
+Cs::findPrefixRange(const Name& prefix, csRegion i)const
 {
-  auto first = m_table.lower_bound(prefix);
-  auto last = m_table.end();
-  if (prefix.size() > 0) {
-    last = m_table.lower_bound(prefix.getSuccessor());
+  switch (i)
+  {
+  case protectedRegion://查找保护区
+    {auto first = m_table_prt.lower_bound(prefix);//返回大于等于prefix的迭代器
+    auto last = m_table_prt.end();
+    if (prefix.size() > 0) {
+      last = m_table_prt.lower_bound(prefix.getSuccessor());//getSuccessor是让name的最后一个组件变成排序意义下的后一个值
+    }
+    return {first, last};}//在case中声明变量会有范围问题，所以加上大括号
+    break;
+  default://查找非保护区
+    {auto first = m_table_unp.lower_bound(prefix);//返回大于等于prefix的迭代器
+    auto last = m_table_unp.end();
+    if (prefix.size() > 0) {
+      last = m_table_unp.lower_bound(prefix.getSuccessor());//getSuccessor是让name的最后一个组件变成排序意义下的后一个值
+    }
+    return {first, last};}
+    break;
   }
-  return {first, last};
 }
 
 size_t
 Cs::eraseImpl(const Name& prefix, size_t limit)
 {
   const_iterator i, last;
-  std::tie(i, last) = findPrefixRange(prefix);
-
   size_t nErased = 0;
+  //分别删除cs两个区域
+  std::tie(i, last) = findPrefixRange(prefix,protectedRegion);
   while (i != last && nErased < limit) {
-    m_policy->beforeErase(i);
-    i = m_table.erase(i);
+    m_policy->beforeErase(i, protectedRegion);
+    i = m_table_prt.erase(i);
     ++nErased;
   }
+
+  std::tie(i, last) = findPrefixRange(prefix,unprotectedRegion);
+  while (i != last && nErased < limit) {
+    m_policy->beforeErase(i, unprotectedRegion);
+    i = m_table_unp.erase(i);
+    ++nErased;
+  }
+
   return nErased;
+
+  // std::tie(i, last) = findPrefixRange(prefix);
+
+  // size_t nErased = 0;
+  // while (i != last && nErased < limit) {
+  //   m_policy->beforeErase(i);
+  //   i = m_table.erase(i);
+  //   ++nErased;
+  // }
+  // return nErased;
 }
 
 Cs::const_iterator
-Cs::findImpl(const Interest& interest) const
+Cs::findImpl(const Interest& interest, csRegion* i) const
 {
   if (!m_shouldServe || m_policy->getLimit() == 0) {
-    return m_table.end();
+    return m_table_prt.end();
   }
 
   const Name& prefix = interest.getName();
-  auto range = findPrefixRange(prefix);
+  //先检查保护区cs
+  auto range = findPrefixRange(prefix, protectedRegion);
   auto match = std::find_if(range.first, range.second,
                             [&interest] (const auto& entry) { return entry.canSatisfy(interest); });
-
+  //保护区cs未命中，再检查非保护区
   if (match == range.second) {
+    range = findPrefixRange(prefix, unprotectedRegion);
+    match = std::find_if(range.first, range.second,
+                            [&interest] (const auto& entry) { return entry.canSatisfy(interest); });
+    //非保护区也没有命中
+    if (match == range.second) {
     NFD_LOG_DEBUG("find " << prefix << " no-match");
-    return m_table.end();
+    return m_table_prt.end();
+    }
+    else{//非保护区命中
+    NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
+    m_policy->beforeUse(match, unprotectedRegion);
+    *i=unprotectedRegion;
+    return match;
   }
-  NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
-  m_policy->beforeUse(match);
-  return match;
+  }
+  else{//保护区命中
+    NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
+    m_policy->beforeUse(match, protectedRegion);
+    return match;
+  }
+  // auto range = findPrefixRange(prefix);
+  // auto match = std::find_if(range.first, range.second,
+  //                           [&interest] (const auto& entry) { return entry.canSatisfy(interest); });
+
+  // if (match == range.second) {
+  //   NFD_LOG_DEBUG("find " << prefix << " no-match");
+  //   return m_table.end();
+  // }
+  // NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
+  // m_policy->beforeUse(match);
+  // return match;
 }
 
 void
 Cs::dump()
 {
   NFD_LOG_DEBUG("dump table");
-  for (const Entry& entry : m_table) {
+  // for (const Entry& entry : m_table) {
+  //   NFD_LOG_TRACE(entry.getFullName());
+  // }
+  for (const Entry& entry : m_table_prt) {
+    NFD_LOG_TRACE(entry.getFullName());
+  }
+  for (const Entry& entry : m_table_unp) {
     NFD_LOG_TRACE(entry.getFullName());
   }
 }
@@ -155,7 +218,9 @@ Cs::setPolicyImpl(unique_ptr<Policy> policy)
 {
   NFD_LOG_DEBUG("set-policy " << policy->getName());
   m_policy = std::move(policy);
-  m_beforeEvictConnection = m_policy->beforeEvict.connect([this] (auto it) { m_table.erase(it); });
+  // m_beforeEvictConnection = m_policy->beforeEvict.connect([this] (auto it) { m_table.erase(it); });
+  m_beforeEvictConnection_prt = m_policy->beforeEvict_prt.connect([this] (auto it) { m_table_prt.erase(it);});
+  m_beforeEvictConnection_prt = m_policy->beforeEvict_unp.connect([this] (auto it) { m_table_unp.erase(it);});
 
   m_policy->setCs(this);
   BOOST_ASSERT(m_policy->getCs() == this);

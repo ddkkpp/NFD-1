@@ -74,19 +74,19 @@ public:
 
 private:
   void
-  doAfterInsert(EntryRef i) final;
+  doAfterInsert(EntryRef i, enum csRegion j) final;
 
   void
-  doAfterRefresh(EntryRef i) final;
+  doAfterRefresh(EntryRef i, enum csRegion j) final;
 
   void
-  doBeforeErase(EntryRef i) final;
+  doBeforeErase(EntryRef i, enum csRegion j) final;
 
   void
-  doBeforeUse(EntryRef i) final;
+  doBeforeUse(EntryRef i, enum csRegion j) final;
 
   void
-  evictEntries() final;
+  evictEntries(enum csRegion j) final;
 
 private:
   /** \brief evicts one entry

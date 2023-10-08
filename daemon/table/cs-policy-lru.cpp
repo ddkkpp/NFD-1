@@ -39,54 +39,110 @@ LruPolicy::LruPolicy()
 }
 
 void
-LruPolicy::doAfterInsert(EntryRef i)
+LruPolicy::doAfterInsert(EntryRef i, enum csRegion j)
 {
-  this->insertToQueue(i, true);
-  this->evictEntries();
+  this->insertToQueue(i, true, j);
+  this->evictEntries(j);
 }
 
 void
-LruPolicy::doAfterRefresh(EntryRef i)
+LruPolicy::doAfterRefresh(EntryRef i, enum csRegion j)
 {
-  this->insertToQueue(i, false);
+  this->insertToQueue(i, false, j);
 }
 
 void
-LruPolicy::doBeforeErase(EntryRef i)
+LruPolicy::doBeforeErase(EntryRef i, enum csRegion j)
 {
-  m_queue.get<1>().erase(i);
+  switch (j)
+  {
+  case protectedRegion:
+    m_queue_prt.get<1>().erase(i);
+    break;
+  case unprotectedRegion:
+    m_queue_unp.get<1>().erase(i);
+    break;
+  default:
+    break;
+  }
+  //m_queue.get<1>().erase(i);
 }
 
 void
-LruPolicy::doBeforeUse(EntryRef i)
+LruPolicy::doBeforeUse(EntryRef i, enum csRegion j)
 {
-  this->insertToQueue(i, false);
+  this->insertToQueue(i, false, j);
 }
 
 void
-LruPolicy::evictEntries()
+LruPolicy::evictEntries(enum csRegion j)
 {
   BOOST_ASSERT(this->getCs() != nullptr);
-  while (this->getCs()->size() > this->getLimit()) {
-    BOOST_ASSERT(!m_queue.empty());
-    EntryRef i = m_queue.front();
-    m_queue.pop_front();
-    this->emitSignal(beforeEvict, i);
+  switch (j)
+  {
+  case protectedRegion:
+    //保护区内容删除后移入非保护区
+    while (this->getCs()->size_prt() > this->getLimit()) {
+      BOOST_ASSERT(!m_queue_prt.empty());
+      EntryRef i = m_queue_prt.front();
+      m_queue_prt.pop_front();
+      this->emitSignal(beforeEvict_prt, i);
+      this->doAfterInsert(i, unprotectedRegion);
+    }
+    break;
+  case unprotectedRegion:
+    while (this->getCs()->size_unp() > this->getLimit()) {
+      BOOST_ASSERT(!m_queue_unp.empty());
+      EntryRef i = m_queue_unp.front();
+      m_queue_unp.pop_front();
+      this->emitSignal(beforeEvict_unp, i);
+    }
+  
+  default:
+    break;
   }
+  // while (this->getCs()->size() > this->getLimit()) {
+  //   BOOST_ASSERT(!m_queue.empty());
+  //   EntryRef i = m_queue.front();
+  //   m_queue.pop_front();
+  //   this->emitSignal(beforeEvict, i);
+  // }
 }
 
 void
-LruPolicy::insertToQueue(EntryRef i, bool isNewEntry)
+LruPolicy::insertToQueue(EntryRef i, bool isNewEntry, enum csRegion j)
 {
   Queue::iterator it;
   bool isNew = false;
-  // push_back only if i does not exist
-  std::tie(it, isNew) = m_queue.push_back(i);
 
-  BOOST_ASSERT(isNew == isNewEntry);
-  if (!isNewEntry) {
-    m_queue.relocate(m_queue.end(), it);
+  switch (j)
+  {
+  case protectedRegion:
+    std::tie(it, isNew) = m_queue_prt.push_back(i);
+    BOOST_ASSERT(isNew == isNewEntry);
+    if (!isNewEntry) {
+      m_queue_prt.relocate(m_queue_prt.end(), it);
+    }
+    break;
+  case unprotectedRegion:
+    std::tie(it, isNew) = m_queue_unp.push_back(i);
+    BOOST_ASSERT(isNew == isNewEntry);
+    if (!isNewEntry) {
+    //非保护区内容命中后移入保护区
+      this->insertToQueue(i, true, protectedRegion);
+      m_queue_unp.pop_front();
+    }
+    break;
+  default:
+    break;
   }
+  // // push_back only if i does not exist
+  // std::tie(it, isNew) = m_queue.push_back(i);
+
+  // BOOST_ASSERT(isNew == isNewEntry);
+  // if (!isNewEntry) {
+  //   m_queue.relocate(m_queue.end(), it);
+  // }
 }
 
 } // namespace lru
