@@ -27,6 +27,7 @@
 #define NFD_DAEMON_TABLE_CS_POLICY_HPP
 
 #include "cs-entry.hpp"
+#include <initializer_list>
 namespace nfd { 
 namespace cs {
 
@@ -113,7 +114,8 @@ public:
   /** \brief a reference to an CS entry
    *  \note operator< of EntryRef compares the Data name enclosed in the Entry.
    */
-  using EntryRef = Table::const_iterator;
+  // using EntryRef = Table::const_iterator;
+  using EntryRef = Entry;
 
   /** \brief emits when an entry is being evicted
    *
@@ -121,7 +123,8 @@ public:
    *  CS should connect to this signal and erase the entry upon signal emission.
    */
   signal::Signal<Policy, EntryRef> beforeEvict_prt;
-  signal::Signal<Policy, EntryRef> beforeEvict_unp;
+  signal::Signal<Policy, EntryRef> beforeEvict_unp;//参数是EntryRef，即table的迭代器，作为erase的参数
+  signal::Signal<Policy, Entry> afterMove;//cs-policy向queue_prt的插入，触发cs的table_prt的插入。参数是value_type的Entry，作为insert的参数
 
   /** \brief invoked by CS after a new entry is inserted
    *  \post cs.size() <= getLimit()
@@ -198,6 +201,7 @@ protected:
 protected:
   DECLARE_SIGNAL_EMIT(beforeEvict_prt)
   DECLARE_SIGNAL_EMIT(beforeEvict_unp)
+  DECLARE_SIGNAL_EMIT(afterMove)
 
 private: // registry
   using CreateFunc = std::function<unique_ptr<Policy>()>;

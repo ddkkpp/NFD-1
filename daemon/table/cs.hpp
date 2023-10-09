@@ -87,8 +87,8 @@ public:
   void//去掉了find函数的const修饰符，以便在里面使用erase函数
   find(const Interest& interest, HitCallback&& hit, MissCallback&& miss) 
   {
-    csRegion i=protectedRegion;
-    auto match = findImpl(interest, &i);
+    int isUnpHit = 0;//用bool类型不管用
+    auto match = findImpl(interest, &isUnpHit);
     if ((match == m_table_prt.end())||(match == m_table_unp.end())) {
       miss(interest);
       return;
@@ -97,9 +97,10 @@ public:
     shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
 
     //如果命中的是非保护区，则需要验证时延
-    if(i==unprotectedRegion){
+    if(isUnpHit==1){
       data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));
     }
+    std::cout<<"find:isUnpHit= "<<isUnpHit;
     //hpp文件无法使用NFD_LOG，所以在cpp中实现
     csVerify(data1);
 
@@ -113,7 +114,7 @@ public:
   size_t
   size() const
   {
-    return m_table_prt.size() + m_table_unp.size() ;
+    return m_table_unp.size() ;
   }
 
 
@@ -238,7 +239,7 @@ private:
   eraseImpl(const Name& prefix, size_t limit);
 
   const_iterator
-  findImpl(const Interest& interest, enum csRegion* i) const;
+  findImpl(const Interest& interest, int* isUnpHit) const;
 
   void
   setPolicyImpl(unique_ptr<Policy> policy);
@@ -253,6 +254,7 @@ private:
   unique_ptr<Policy> m_policy;
   signal::ScopedConnection m_beforeEvictConnection_prt;
   signal::ScopedConnection m_beforeEvictConnection_unp;
+  signal::ScopedConnection m_afterMoveConnection;
 
   bool m_shouldAdmit = true; ///< if false, no Data will be admitted
   bool m_shouldServe = true; ///< if false, all lookups will miss

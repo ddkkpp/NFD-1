@@ -66,7 +66,7 @@ Cs::insert(const Data& data, bool isUnsolicited)
 
   const_iterator it;
   bool isNewEntry = false;
-  std::tie(it, isNewEntry) = m_table_unp.emplace(data.shared_from_this(), isUnsolicited);//插入非保护区
+  std::tie(it, isNewEntry) = m_table_unp.emplace(data.shared_from_this(), isUnsolicited);//插入非保护区,使用emplce可以自动将传入参数转化为Entry变量并插入
   Entry& entry = const_cast<Entry&>(*it);
 
   entry.updateFreshUntil();
@@ -76,11 +76,12 @@ Cs::insert(const Data& data, bool isUnsolicited)
     if (entry.isUnsolicited() && !isUnsolicited) {
       entry.clearUnsolicited();
     }
-
-    m_policy->afterRefresh(it, unprotectedRegion);
+    NFD_LOG_DEBUG("不是newEntry");
+    m_policy->afterRefresh(*it, unprotectedRegion);
   }
   else {
-    m_policy->afterInsert(it, unprotectedRegion);
+    NFD_LOG_DEBUG("是newEntry");
+    m_policy->afterInsert(*it, unprotectedRegion);
   }
 }
 
@@ -116,14 +117,14 @@ Cs::eraseImpl(const Name& prefix, size_t limit)
   //分别删除cs两个区域
   std::tie(i, last) = findPrefixRange(prefix,protectedRegion);
   while (i != last && nErased < limit) {
-    m_policy->beforeErase(i, protectedRegion);
+    m_policy->beforeErase(*i, protectedRegion);
     i = m_table_prt.erase(i);
     ++nErased;
   }
 
   std::tie(i, last) = findPrefixRange(prefix,unprotectedRegion);
   while (i != last && nErased < limit) {
-    m_policy->beforeErase(i, unprotectedRegion);
+    m_policy->beforeErase(*i, unprotectedRegion);
     i = m_table_unp.erase(i);
     ++nErased;
   }
@@ -142,8 +143,16 @@ Cs::eraseImpl(const Name& prefix, size_t limit)
 }
 
 Cs::const_iterator
-Cs::findImpl(const Interest& interest, csRegion* i) const
+Cs::findImpl(const Interest& interest, int* isUnpHit) const
 {
+  NFD_LOG_DEBUG("table_prt中有");
+  for(auto ii=m_table_prt.begin();ii!=m_table_prt.end();++ii){
+    NFD_LOG_DEBUG((ii)->getName());
+  }
+  NFD_LOG_DEBUG("table_unp中有");
+  for(auto ii=m_table_unp.begin();ii!=m_table_unp.end();++ii){
+    NFD_LOG_DEBUG((ii)->getName());
+  }
   if (!m_shouldServe || m_policy->getLimit() == 0) {
     return m_table_prt.end();
   }
@@ -164,15 +173,16 @@ Cs::findImpl(const Interest& interest, csRegion* i) const
     return m_table_prt.end();
     }
     else{//非保护区命中
-    NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
-    m_policy->beforeUse(match, unprotectedRegion);
-    *i=unprotectedRegion;
+    NFD_LOG_DEBUG("非保护区find " << prefix << " matching " << match->getName());
+    m_policy->beforeUse(*match, unprotectedRegion);
+    *isUnpHit=1;
+    NFD_LOG_DEBUG("isUnpHit= "<<*isUnpHit);
     return match;
   }
   }
   else{//保护区命中
-    NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
-    m_policy->beforeUse(match, protectedRegion);
+    NFD_LOG_DEBUG("保护区find " << prefix << " matching " << match->getName());
+    m_policy->beforeUse(*match, protectedRegion);
     return match;
   }
   // auto range = findPrefixRange(prefix);
@@ -220,7 +230,8 @@ Cs::setPolicyImpl(unique_ptr<Policy> policy)
   m_policy = std::move(policy);
   // m_beforeEvictConnection = m_policy->beforeEvict.connect([this] (auto it) { m_table.erase(it); });
   m_beforeEvictConnection_prt = m_policy->beforeEvict_prt.connect([this] (auto it) { m_table_prt.erase(it);});
-  m_beforeEvictConnection_prt = m_policy->beforeEvict_unp.connect([this] (auto it) { m_table_unp.erase(it);});
+  m_beforeEvictConnection_unp = m_policy->beforeEvict_unp.connect([this] (auto it) { m_table_unp.erase(it);});
+  m_afterMoveConnection = m_policy->afterMove.connect([this] (auto it) { m_table_prt.insert(it);});
 
   m_policy->setCs(this);
   BOOST_ASSERT(m_policy->getCs() == this);
@@ -261,14 +272,14 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
     // uint64_t name=std::strtoul(str.c_str(), &p, 10);//使用stoul报错
     // NFD_LOG_DEBUG("name变成str: "<<str.c_str());
 
-    //只插入seq，不适用于为网络存在多个prefix的情况
-  if(hasVerifiedFilter.Contain(seq, ei)==0){
-      NFD_LOG_DEBUG("命中缓存在过滤器中找到，无需验证"<<seq);
-  }
-  else{
-    NFD_LOG_DEBUG("命中缓存没有在过滤器中找到，需要验证"<<seq);
-    data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
-  }
+  //   //只插入seq，不适用于为网络存在多个prefix的情况
+  // if(hasVerifiedFilter.Contain(seq, ei)==0){
+  //     NFD_LOG_DEBUG("命中缓存在过滤器中找到，无需验证"<<seq);
+  // }
+  // else{
+  //   NFD_LOG_DEBUG("命中缓存没有在过滤器中找到，需要验证"<<seq);
+  //   data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
+  // }
   //如果命中缓存是假包，把SignatureTypeValue改为100，表示NACK
   if(data1->getSignatureInfo().getSignatureType()==1){
     NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
@@ -278,8 +289,7 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
     this->erase(data1->getName(),5,[=] (size_t nErased){}) ;//删除污染缓存
   }
   else{
-    NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName()<<" 插入过滤器"<<seq);
-    hasVerifiedFilter.Add(seq,ei);
+    NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName());
   }
 }
 

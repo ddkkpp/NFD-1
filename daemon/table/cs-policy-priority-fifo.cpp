@@ -89,7 +89,7 @@ PriorityFifoPolicy::evictOne()
                !m_queues[QUEUE_STALE].empty() ||
                !m_queues[QUEUE_FIFO].empty());
 
-  EntryRef i;
+  EntryRef i=m_queues[QUEUE_UNSOLICITED].front();
   if (!m_queues[QUEUE_UNSOLICITED].empty()) {
     i = m_queues[QUEUE_UNSOLICITED].front();
   }
@@ -110,15 +110,15 @@ PriorityFifoPolicy::attachQueue(EntryRef i)
   BOOST_ASSERT(m_entryInfoMap.find(i) == m_entryInfoMap.end());
 
   EntryInfo* entryInfo = new EntryInfo();
-  if (i->isUnsolicited()) {
+  if (i.isUnsolicited()) {
     entryInfo->queueType = QUEUE_UNSOLICITED;
   }
-  else if (!i->isFresh()) {
+  else if (!i.isFresh()) {
     entryInfo->queueType = QUEUE_STALE;
   }
   else {
     entryInfo->queueType = QUEUE_FIFO;
-    entryInfo->moveStaleEventId = getScheduler().schedule(i->getData().getFreshnessPeriod(),
+    entryInfo->moveStaleEventId = getScheduler().schedule(i.getData().getFreshnessPeriod(),
                                                           [=] { moveToStaleQueue(i); });
   }
 
