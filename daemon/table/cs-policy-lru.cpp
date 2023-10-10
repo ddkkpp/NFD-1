@@ -107,7 +107,7 @@ LruPolicy::evictEntries(enum csRegion j)
       }
     }
     break;
-  case unprotectedRegion:
+  case unprotectedRegion: 
     NFD_LOG_DEBUG("准备删除非保护区内容");
     // NFD_LOG_DEBUG("size_unp= "<<this->getCs()->size_unp()<<" limit= "<<this->getLimit());
     // while (this->getCs()->size_unp() > this->getLimit()) {
