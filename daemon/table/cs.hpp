@@ -93,6 +93,9 @@ public:
     }
 
     shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
+    //提取出来的缓存的extradelay置为0
+    data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(0));
+
     //hpp文件无法使用NFD_LOG，所以在cpp中实现
     csVerify(data1);
 
