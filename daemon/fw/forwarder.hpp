@@ -27,6 +27,7 @@
 #define NFD_DAEMON_FW_FORWARDER_HPP
 
 #include "cuckoofilter/cuckoofilter.h"
+//#include "strategy.hpp"
 #include "face-table.hpp"
 #include "forwarder-counters.hpp"
 #include "unsolicited-data-policy.hpp"
@@ -52,6 +53,12 @@ namespace nfd {
 namespace fw {
 class Strategy;
 } // namespace fw
+
+enum NodeType:uint16_t{
+  honestNode=0,
+  maliciousNode=1,
+  verifyNode=2,
+};
 
 /**
  * \brief Main class of NFD's forwarding engine.
@@ -288,7 +295,7 @@ private:
   std::set<FaceEndpoint> face_info;//存储可修改（删除然后插入）的FaceInfo
   bool isProbing=false;
   bool allFaceReceiveEnoughProbe=false;
-  bool m_isHonest=true;
+  enum NodeType nodeType=honestNode;
   ::ns3::Ptr<::ns3::UniformRandomVariable> m_rand;
   size_t deque_capacity=11;//反馈的包不能用于探测，因为不在邻居缓存中
   //face::Face& laterFbFace;

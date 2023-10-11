@@ -32,6 +32,7 @@
 namespace nfd {
 namespace fw {
 
+
 /**
  * \brief Represents a forwarding strategy
  */
@@ -184,7 +185,7 @@ public: // triggers
                         const shared_ptr<pit::Entry>& pitEntry);
 
 //自己修改返回值：为了给forwarder一个指示本节点是否会修改data的bool值
-  virtual bool
+  virtual NodeType
   satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
                   const FaceEndpoint& ingress, const Data& data,
                   std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
