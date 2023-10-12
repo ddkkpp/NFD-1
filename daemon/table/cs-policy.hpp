@@ -124,7 +124,8 @@ public:
    */
   signal::Signal<Policy, EntryRef> beforeEvict_prt;
   signal::Signal<Policy, EntryRef> beforeEvict_unp;//参数是EntryRef，即table的迭代器，作为erase的参数
-  signal::Signal<Policy, Entry> afterMove;//cs-policy向queue_prt的插入，触发cs的table_prt的插入。参数是value_type的Entry，作为insert的参数
+  signal::Signal<Policy, Entry> beforeInsert_prt;//cs-policy向queue_prt的插入，触发cs的table_prt的插入。参数是value_type的Entry，作为insert的参数
+  signal::Signal<Policy, Entry> beforeInsert_unp;
 
   /** \brief invoked by CS after a new entry is inserted
    *  \post cs.size() <= getLimit()
@@ -154,6 +155,9 @@ public:
    */
   void
   beforeUse(EntryRef i, enum csRegion j);
+
+  virtual void
+  printQueue();
 
 protected:
   /** \brief invoked after a new entry is created in CS
@@ -198,10 +202,12 @@ protected:
   virtual void
   evictEntries(enum csRegion j) = 0;
 
+
 protected:
   DECLARE_SIGNAL_EMIT(beforeEvict_prt)
   DECLARE_SIGNAL_EMIT(beforeEvict_unp)
-  DECLARE_SIGNAL_EMIT(afterMove)
+  DECLARE_SIGNAL_EMIT(beforeInsert_prt)
+  DECLARE_SIGNAL_EMIT(beforeInsert_unp)
 
 private: // registry
   using CreateFunc = std::function<unique_ptr<Policy>()>;

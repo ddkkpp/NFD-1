@@ -98,13 +98,20 @@ LruPolicy::evictEntries(enum csRegion j)
       NFD_LOG_DEBUG("实际删除保护区内容");
       BOOST_ASSERT(!m_queue_prt.empty());
       EntryRef i = m_queue_prt.front();
+      NFD_LOG_DEBUG("删除queue_prt");
       m_queue_prt.pop_front();
+      NFD_LOG_DEBUG("触发cs的table_prt的删除");
       this->emitSignal(beforeEvict_prt, i);
-      this->doAfterInsert(i, unprotectedRegion);
-      NFD_LOG_DEBUG("queue_prt中有");
-      for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
-        NFD_LOG_DEBUG((ii)->getName());
-      }
+      NFD_LOG_DEBUG("准备插入非保护区");
+      this->insertToQueue(i,true,unprotectedRegion);
+      NFD_LOG_DEBUG("触发cs的table_unp的插入");
+      this->emit_beforeInsert_unp(i);
+      NFD_LOG_DEBUG("准备删除非保护区");
+      this->evictEntries(unprotectedRegion);
+      // NFD_LOG_DEBUG("queue_prt中有");
+      // for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
+      //   NFD_LOG_DEBUG((ii)->getName());
+      // }
     }
     break;
   case unprotectedRegion:
@@ -115,16 +122,16 @@ LruPolicy::evictEntries(enum csRegion j)
     while (m_queue_unp.size() > this->getLimit()) {
       NFD_LOG_DEBUG("实际删除非保护区内容");
       BOOST_ASSERT(!m_queue_unp.empty());
+      NFD_LOG_DEBUG("删除queue_unp");
       EntryRef i = m_queue_unp.front();
-      NFD_LOG_DEBUG("开始pop");
       m_queue_unp.pop_front();
-      NFD_LOG_DEBUG("开始发送evict信号");
+      NFD_LOG_DEBUG("触发cs的table_unp的删除");
       this->emitSignal(beforeEvict_unp, i);
       NFD_LOG_DEBUG("删除完毕");
-      NFD_LOG_DEBUG("queue_unp中有");
-      for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
-        NFD_LOG_DEBUG((ii)->getName());
-      }
+      // NFD_LOG_DEBUG("queue_unp中有");
+      // for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
+      //   NFD_LOG_DEBUG((ii)->getName());
+      // }
     }
   
   default:
@@ -149,13 +156,13 @@ LruPolicy::insertToQueue(EntryRef i, bool isNewEntry, enum csRegion j)
   {
   case protectedRegion:
     NFD_LOG_DEBUG("插入protectedRegion前");
-    NFD_LOG_DEBUG("queue_prt中有");
+    // NFD_LOG_DEBUG("queue_prt中有");
     if(m_queue_prt.empty()){
       NFD_LOG_DEBUG("queue_prt为空");
     }
-    for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
-      NFD_LOG_DEBUG((ii)->getName());
-    }
+    // for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
+    //   NFD_LOG_DEBUG((ii)->getName());
+    // }
     std::tie(it, isNew) = m_queue_prt.push_back(i);
     NFD_LOG_DEBUG("isNewEntry= "<<isNewEntry);
     NFD_LOG_DEBUG("isNew= "<<isNew);
@@ -163,19 +170,19 @@ LruPolicy::insertToQueue(EntryRef i, bool isNewEntry, enum csRegion j)
     if (!isNewEntry) {
       m_queue_prt.relocate(m_queue_prt.end(), it);
     }
-    NFD_LOG_DEBUG("queue_prt中有");
-    for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
-      NFD_LOG_DEBUG((ii)->getName());
-    }
+    // NFD_LOG_DEBUG("queue_prt中有");
+    // for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
+    //   NFD_LOG_DEBUG((ii)->getName());
+    // }
     // NFD_LOG_DEBUG("size_prt= "<<this->getCs()->size_prt());
     NFD_LOG_DEBUG("size_prt= "<<m_queue_prt.size());
     break;
   case unprotectedRegion:
     NFD_LOG_DEBUG("插入unprotectedRegion前");
-    NFD_LOG_DEBUG("queue_unp中有");
-    for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
-      NFD_LOG_DEBUG((ii)->getName());
-    }
+    // NFD_LOG_DEBUG("queue_unp中有");
+    // for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
+    //   NFD_LOG_DEBUG((ii)->getName());
+    // }
     std::tie(it, isNew) = m_queue_unp.push_back(i);
     NFD_LOG_DEBUG("isNewEntry= "<<isNewEntry);
     NFD_LOG_DEBUG("isNew= "<<isNew);
@@ -183,19 +190,21 @@ LruPolicy::insertToQueue(EntryRef i, bool isNewEntry, enum csRegion j)
     if (!isNewEntry) {
     //非保护区内容命中后移入保护区
         //  m_queue_unp.relocate(m_queue_unp.end(), it);
-      this->doAfterInsert(i,protectedRegion);//要先操作cs的table，再操作policy的queue，因为evict是根据table大小来决定是否删除
-      NFD_LOG_DEBUG("Entry不是新的(被命中)");
-      NFD_LOG_DEBUG("触发cs的table_prt的插入");
-      // auto c=*i;
-      this->emitSignal(afterMove, i);//cs-policy向queue_prt的插入,触发cs的table_prt的插入
+      NFD_LOG_DEBUG("删除queue_unp");
       m_queue_unp.erase(it);
       NFD_LOG_DEBUG("触发cs的table_unp的剔除");
       this->emitSignal(beforeEvict_unp, i);//使得cs中的m_table_unp也同步删除
+      NFD_LOG_DEBUG("准备插入保护区");
+      this->insertToQueue(i,true,protectedRegion);
+      NFD_LOG_DEBUG("触发cs的table_prt的插入");
+      this->emitSignal(beforeInsert_prt, i);
+      NFD_LOG_DEBUG("准备删除保护区");
+      this->evictEntries(protectedRegion);
     }
-    NFD_LOG_DEBUG("queue_unp中有");
-    for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
-      NFD_LOG_DEBUG((ii)->getName());
-    }
+    // NFD_LOG_DEBUG("queue_unp中有");
+    // for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
+    //   NFD_LOG_DEBUG((ii)->getName());
+    // }
     //NFD_LOG_DEBUG("size_unp= "<<this->getCs()->size_unp());
     NFD_LOG_DEBUG("size_unp= "<<m_queue_unp.size());
     break;
@@ -209,6 +218,20 @@ LruPolicy::insertToQueue(EntryRef i, bool isNewEntry, enum csRegion j)
   // if (!isNewEntry) {
   //   m_queue.relocate(m_queue.end(), it);
   // }
+  
+}
+
+void
+LruPolicy::printQueue()
+{
+    NFD_LOG_DEBUG("queue_prt中有");
+    for(auto ii=m_queue_prt.begin();ii!=m_queue_prt.end();++ii){
+      NFD_LOG_DEBUG((ii)->getName());
+    }
+     NFD_LOG_DEBUG("queue_unp中有");
+    for(auto ii=m_queue_unp.begin();ii!=m_queue_unp.end();++ii){
+      NFD_LOG_DEBUG((ii)->getName());
+    }
 }
 
 } // namespace lru

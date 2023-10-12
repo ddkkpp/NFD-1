@@ -85,19 +85,38 @@ public:
    */
   template<typename HitCallback, typename MissCallback>
   void//去掉了find函数的const修饰符，以便在里面使用erase函数
-  find(const Interest& interest, HitCallback&& hit, MissCallback&& miss) 
+  find(const Interest& interest, HitCallback&& hit, MissCallback&& miss)
   {
     int isUnpHit = 0;//用bool类型不管用
     auto match = findImpl(interest, &isUnpHit);
-    if ((match == m_table_prt.end())||(match == m_table_unp.end())) {
+    // outlog("table_prt中有");
+    // for(auto ii=m_table_prt.begin();ii!=m_table_prt.end();++ii){
+    //   outlog((ii)->getName().toUri());
+    // }
+    // outlog("table_unp中有");
+    // for(auto ii=m_table_unp.begin();ii!=m_table_unp.end();++ii){
+    //   outlog((ii)->getName().toUri());
+    // }
+    // m_policy->printQueue();
+    // if ((match == m_table_prt.end())||(match == m_table_unp.end())) {
+    //   miss(interest);
+    //   outlog("miss");
+    //   return;
+    // }
+    if(match.second==false){
       miss(interest);
       return;
     }
-    
-    shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
+    outlog("hit");
+    //shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
+    outlog("hit");
+    // shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match.first.getData()));
+    shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match.first));
+    outlog(data1->getName().toUri());
+    outlog("hit");
     //提取出来的缓存的extradelay置为0
     data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(0));
-
+    outlog("hit");
     //如果命中的是非保护区，则需要验证时延
     if(isUnpHit==1){
       data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));
@@ -110,6 +129,9 @@ public:
 
     hit(interest, *data1);
   }
+
+  void 
+  outlog(std::string str);
 
   /** \brief get number of stored packets
    */
@@ -240,7 +262,8 @@ private:
   size_t
   eraseImpl(const Name& prefix, size_t limit);
 
-  const_iterator
+  //const_iterator
+  std::pair<Data, bool>
   findImpl(const Interest& interest, int* isUnpHit) const;
 
   void
@@ -254,9 +277,10 @@ private:
   Table m_table_prt;//保护区cs
   Table m_table_unp;//非保护区cs
   unique_ptr<Policy> m_policy;
-  signal::ScopedConnection m_beforeEvictConnection_prt;
-  signal::ScopedConnection m_beforeEvictConnection_unp;
-  signal::ScopedConnection m_afterMoveConnection;
+  signal::ScopedConnection m_beforeEvict_prtConnection;
+  signal::ScopedConnection m_beforeEvict_unpConnection;
+  signal::ScopedConnection m_beforeInsert_prtConnection;
+  signal::ScopedConnection m_beforeInsert_unpConnection;
 
   bool m_shouldAdmit = true; ///< if false, no Data will be admitted
   bool m_shouldServe = true; ///< if false, all lookups will miss

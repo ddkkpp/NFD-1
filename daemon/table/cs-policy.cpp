@@ -100,6 +100,11 @@ Policy::beforeUse(EntryRef i, enum csRegion j)
   BOOST_ASSERT(m_cs != nullptr);
   this->doBeforeUse(i, j);
 }
+void
+Policy::printQueue()
+{
+  NFD_LOG_DEBUG("默认打印");
+}
 
 } // namespace cs
 } // namespace nfd
