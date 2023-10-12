@@ -873,7 +873,21 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     }
   }
 
+
   shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
+  
+    //验证节点概率性验证
+    auto p=double(rand())/double(RAND_MAX);
+    if(p<=0.5){
+      if(data.getTag<ndn::lp::ExtraDelayTag>()!=nullptr){
+            data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4+*(data.getTag<ndn::lp::ExtraDelayTag>())) );
+      }
+      if(data.getSignatureInfo().getSignatureType()==1){
+        return;//丢弃
+      }
+    }
+
+  //恶意节点操作
   if(!m_isHonest)
   {
     shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
