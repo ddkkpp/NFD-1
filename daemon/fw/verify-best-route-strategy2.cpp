@@ -23,20 +23,20 @@
  * NFD, e.g., in COPYING.md file.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "mal-best-route-strategy2.hpp"
+#include "verify-best-route-strategy2.hpp"
 #include "algorithm.hpp"
 #include "common/logger.hpp"
 
 namespace nfd {
 namespace fw {
 
-NFD_LOG_INIT(MalBestRouteStrategy2);
-NFD_REGISTER_STRATEGY(MalBestRouteStrategy2);
+NFD_LOG_INIT(VerifyBestRouteStrategy2);
+NFD_REGISTER_STRATEGY(VerifyBestRouteStrategy2);
 
-const time::milliseconds MalBestRouteStrategy2::RETX_SUPPRESSION_INITIAL(10);
-const time::milliseconds MalBestRouteStrategy2::RETX_SUPPRESSION_MAX(250);
+const time::milliseconds VerifyBestRouteStrategy2::RETX_SUPPRESSION_INITIAL(10);
+const time::milliseconds VerifyBestRouteStrategy2::RETX_SUPPRESSION_MAX(250);
 
-MalBestRouteStrategy2::MalBestRouteStrategy2(Forwarder& forwarder, const Name& name)
+VerifyBestRouteStrategy2::VerifyBestRouteStrategy2(Forwarder& forwarder, const Name& name)
   : Strategy(forwarder)
   , ProcessNackTraits(this)
   , m_retxSuppression(RETX_SUPPRESSION_INITIAL,
@@ -45,24 +45,24 @@ MalBestRouteStrategy2::MalBestRouteStrategy2(Forwarder& forwarder, const Name& n
 {
   ParsedInstanceName parsed = parseInstanceName(name);
   if (!parsed.parameters.empty()) {
-    NDN_THROW(std::invalid_argument("MalBestRouteStrategy2 does not accept parameters"));
+    NDN_THROW(std::invalid_argument("VerifyBestRouteStrategy2 does not accept parameters"));
   }
   if (parsed.version && *parsed.version != getStrategyName()[-1].toVersion()) {
     NDN_THROW(std::invalid_argument(
-      "MalBestRouteStrategy2 does not support version " + to_string(*parsed.version)));
+      "VerifyBestRouteStrategy2 does not support version " + to_string(*parsed.version)));
   }
   this->setInstanceName(makeInstanceName(name, getStrategyName()));
 }
 
 const Name&
-MalBestRouteStrategy2::getStrategyName()
+VerifyBestRouteStrategy2::getStrategyName()
 {
-  static const auto strategyName=Name("/localhost/nfd/strategy/mal-best-route/%FD%05").appendVersion(5);
+  static const auto strategyName=Name("/localhost/nfd/strategy/verify-best-route/%FD%05").appendVersion(5);
   return strategyName;
 }
 
 void
-MalBestRouteStrategy2::afterReceiveInterest(const Interest& interest, const FaceEndpoint& ingress,
+VerifyBestRouteStrategy2::afterReceiveInterest(const Interest& interest, const FaceEndpoint& ingress,
                                         const shared_ptr<pit::Entry>& pitEntry)
 {
   RetxSuppressionResult suppression = m_retxSuppression.decidePerPitEntry(*pitEntry);
@@ -123,14 +123,14 @@ MalBestRouteStrategy2::afterReceiveInterest(const Interest& interest, const Face
 }
 
 void
-MalBestRouteStrategy2::afterReceiveNack(const lp::Nack& nack, const FaceEndpoint& ingress,
+VerifyBestRouteStrategy2::afterReceiveNack(const lp::Nack& nack, const FaceEndpoint& ingress,
                                     const shared_ptr<pit::Entry>& pitEntry)
 {
   this->processNack(nack, ingress.face, pitEntry);
 }
 
 NodeType
-MalBestRouteStrategy2::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
+VerifyBestRouteStrategy2::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
                           const FaceEndpoint& ingress, const Data& data,
                           std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
                           std::set<std::pair<Face*, EndpointId>>& unsatisfiedDownstreams)
@@ -151,11 +151,11 @@ MalBestRouteStrategy2::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
 
   // invoke PIT satisfy callback
   beforeSatisfyInterest(data, ingress, pitEntry);
-  return maliciousNode;
+  return verifyNode;
 }
 
 // void
-// MalBestRouteStrategy2::afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
+// VerifyBestRouteStrategy2::afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
 //                   const shared_ptr<pit::Entry>& pitEntry)
 // {
 //     NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
@@ -167,7 +167,7 @@ MalBestRouteStrategy2::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
 // }
 
 // void
-// MalBestRouteStrategy2::beforeSatisfyInterest(const Data& data, const FaceEndpoint& ingress,
+// VerifyBestRouteStrategy2::beforeSatisfyInterest(const Data& data, const FaceEndpoint& ingress,
 //                                 const shared_ptr<pit::Entry>& pitEntry)
 // {
 //     NFD_LOG_DEBUG("beforeSatisfyInterest pitEntry=" << pitEntry->getName()
@@ -179,18 +179,6 @@ MalBestRouteStrategy2::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
 //     this->sendDataToAll(data_, pitEntry, ingress.face);
 // }
 
-bool
-MalBestRouteStrategy2::sendData(const Data& data, Face& egress, const shared_ptr<pit::Entry>& pitEntry)
-{
-    shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
-    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
-    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
-
-    data1->setSignatureInfo(*signatureInfo1);
-    NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
-    NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
-    return Strategy::sendData(*data1, egress, pitEntry);
-}
 
 } // namespace fw
 } // namespace nfd

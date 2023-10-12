@@ -23,8 +23,8 @@
  * NFD, e.g., in COPYING.md file.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef NFD_DAEMON_FW_MAL_BEST_ROUTE_STRATEGY2_HPP
-#define NFD_DAEMON_FW_MAL_BEST_ROUTE_STRATEGY2_HPP
+#ifndef NFD_DAEMON_FW_VERIFY_BEST_ROUTE_STRATEGY2_HPP
+#define NFD_DAEMON_FW_VERIFY_BEST_ROUTE_STRATEGY2_HPP
 
 #include "strategy.hpp"
 #include "process-nack-traits.hpp"
@@ -53,12 +53,12 @@ namespace fw {
  *  \note This strategy is not EndpointId-aware.
  */
 //恶意bestroute2
-class MalBestRouteStrategy2 : public Strategy
-                         , public ProcessNackTraits<MalBestRouteStrategy2>
+class VerifyBestRouteStrategy2 : public Strategy
+                         , public ProcessNackTraits<VerifyBestRouteStrategy2>
 {
 public:
   explicit
-  MalBestRouteStrategy2(Forwarder& forwarder, const Name& name = getStrategyName());
+  VerifyBestRouteStrategy2(Forwarder& forwarder, const Name& name = getStrategyName());
 
   static const Name&
   getStrategyName();
@@ -71,8 +71,6 @@ public:
   afterReceiveNack(const lp::Nack& nack, const FaceEndpoint& ingress,
                    const shared_ptr<pit::Entry>& pitEntry) override;
 
-  bool
-  sendData(const Data& data, Face& egress, const shared_ptr<pit::Entry>& pitEntry) override;
 
   // void
   // afterReceiveData(const Data& data, const FaceEndpoint& ingress, 
@@ -89,7 +87,7 @@ NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_MAX;
   RetxSuppressionExponential m_retxSuppression;
 
-  friend ProcessNackTraits<MalBestRouteStrategy2>;
+  friend ProcessNackTraits<VerifyBestRouteStrategy2>;
 };
 
 } // namespace fw

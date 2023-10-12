@@ -70,6 +70,9 @@ private:
   void
   evictEntries(enum csRegion j) final;
 
+  virtual void
+  printQueue() ;
+
 private:
   /** \brief moves an entry to the end of queue
    */

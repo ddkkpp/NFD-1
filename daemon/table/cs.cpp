@@ -142,19 +142,22 @@ Cs::eraseImpl(const Name& prefix, size_t limit)
   // return nErased;
 }
 
-Cs::const_iterator
+std::pair<Data, bool>
 Cs::findImpl(const Interest& interest, int* isUnpHit) const
 {
-  NFD_LOG_DEBUG("table_prt中有");
-  for(auto ii=m_table_prt.begin();ii!=m_table_prt.end();++ii){
-    NFD_LOG_DEBUG((ii)->getName());
-  }
-  NFD_LOG_DEBUG("table_unp中有");
-  for(auto ii=m_table_unp.begin();ii!=m_table_unp.end();++ii){
-    NFD_LOG_DEBUG((ii)->getName());
-  }
+  auto emptyData=Data(interest.getName());
+  // NFD_LOG_DEBUG("table_prt中有");
+  // for(auto ii=m_table_prt.begin();ii!=m_table_prt.end();++ii){
+  //   NFD_LOG_DEBUG((ii)->getName());
+  // }
+  // NFD_LOG_DEBUG("table_unp中有");
+  // for(auto ii=m_table_unp.begin();ii!=m_table_unp.end();++ii){
+  //   NFD_LOG_DEBUG((ii)->getName());
+  // }
+  // m_policy->printQueue();
   if (!m_shouldServe || m_policy->getLimit() == 0) {
-    return m_table_prt.end();
+    // return m_table_prt.end();
+    return std::make_pair(emptyData, false);
   }
 
   const Name& prefix = interest.getName();
@@ -170,20 +173,27 @@ Cs::findImpl(const Interest& interest, int* isUnpHit) const
     //非保护区也没有命中
     if (match == range.second) {
     NFD_LOG_DEBUG("find " << prefix << " no-match");
-    return m_table_prt.end();
+      // return m_table_prt.end();
+      return std::make_pair(emptyData, false);
     }
     else{//非保护区命中
     NFD_LOG_DEBUG("非保护区find " << prefix << " matching " << match->getName());
+    auto data=match->getData();
+    NFD_LOG_DEBUG("命中data= "<<data.getName());
     m_policy->beforeUse(*match, unprotectedRegion);
     *isUnpHit=1;
     NFD_LOG_DEBUG("isUnpHit= "<<*isUnpHit);
-    return match;
+    // return *match;
+    return std::make_pair(data, true);
   }
   }
   else{//保护区命中
     NFD_LOG_DEBUG("保护区find " << prefix << " matching " << match->getName());
+    auto data=match->getData();
+    NFD_LOG_DEBUG("命中data= "<<data.getName());
     m_policy->beforeUse(*match, protectedRegion);
-    return match;
+    // return *match;
+    return std::make_pair(data, true);
   }
   // auto range = findPrefixRange(prefix);
   // auto match = std::find_if(range.first, range.second,
@@ -229,9 +239,10 @@ Cs::setPolicyImpl(unique_ptr<Policy> policy)
   NFD_LOG_DEBUG("set-policy " << policy->getName());
   m_policy = std::move(policy);
   // m_beforeEvictConnection = m_policy->beforeEvict.connect([this] (auto it) { m_table.erase(it); });
-  m_beforeEvictConnection_prt = m_policy->beforeEvict_prt.connect([this] (auto it) { m_table_prt.erase(it);});
-  m_beforeEvictConnection_unp = m_policy->beforeEvict_unp.connect([this] (auto it) { m_table_unp.erase(it);});
-  m_afterMoveConnection = m_policy->afterMove.connect([this] (auto it) { m_table_prt.insert(it);});
+  m_beforeEvict_prtConnection = m_policy->beforeEvict_prt.connect([this] (auto it) { m_table_prt.erase(it);});
+  m_beforeEvict_unpConnection = m_policy->beforeEvict_unp.connect([this] (auto it) { m_table_unp.erase(it);});
+  m_beforeInsert_prtConnection = m_policy->beforeInsert_prt.connect([this] (auto it) { m_table_prt.insert(it);});
+  m_beforeInsert_unpConnection = m_policy->beforeInsert_unp.connect([this] (auto it) { m_table_unp.insert(it);});
 
   m_policy->setCs(this);
   BOOST_ASSERT(m_policy->getCs() == this);
@@ -291,6 +302,11 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
   else{
     NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName());
   }
+}
+
+void 
+Cs::outlog(std::string str){
+  NFD_LOG_DEBUG(str);
 }
 
 } // namespace cs

@@ -167,7 +167,7 @@ Strategy::beforeSatisfyInterest(const Data& data, const FaceEndpoint& ingress,
                   << " in=" << ingress << " data=" << data.getName());
 }
 
-bool
+NodeType
 Strategy::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
                           const FaceEndpoint& ingress, const Data& data,
                           std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
@@ -189,7 +189,7 @@ Strategy::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
 
   // invoke PIT satisfy callback
   beforeSatisfyInterest(data, ingress, pitEntry);
-  return true;
+  return honestNode;
 }
 
 

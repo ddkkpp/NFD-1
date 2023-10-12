@@ -39,6 +39,7 @@
 #include "face/null-face.hpp"
 #include <deque>
 #include <thread>
+#include<math.h>
 
 namespace nfd {
 
@@ -764,8 +765,58 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
+  //此处决定是否缓存
+  auto now=time::steady_clock::now();
+  auto Tmax=1_s;
+  auto Te=0_ns;
+  int count=0;
+  auto Te_ba=0_ns;
+  int count_ba=0;
+  double p;
+  //一个pitEntry对应一个interest，一个outrecord对应这个interest的一个上游端口
+  for (const auto& pitEntry : pitMatches) {
+    for(const auto& outRecord:pitEntry->getOutRecords()){
+        Te+= now - outRecord.getLastRenewed();
+        ++count;
+    }
+  }
+  NFD_LOG_DEBUG("Te_sum = "<<Te<<", count = "<<count);
+  Te=Te/count;
+  NFD_LOG_DEBUG("Te = "<<Te);
+
+  for (const auto& pitEntry : m_pit) {
+    for(const auto& outRecord:pitEntry.getOutRecords()){
+        Te_ba+= now - outRecord.getLastRenewed();
+        ++count_ba;
+    }
+  }
+  NFD_LOG_DEBUG("Te_ba_sum = "<<Te_ba<<", count_ba = "<<count_ba);
+  Te_ba=Te_ba/count_ba;
+  NFD_LOG_DEBUG("Te_ba = "<<Te_ba);
+
+  if(Te.count()<=std::min(Te_ba.count(),Tmax.count()/2)){
+    NFD_LOG_DEBUG("p=1");
+    p=1;
+  }
+  else if((Te.count()>std::min(Te_ba.count(),Tmax.count()/2))&&(Te.count()<=std::max(Te_ba.count(),Tmax.count()/2))){
+    p=1-Te / Tmax;
+    NFD_LOG_DEBUG("p=1-Te/Tmax= "<<p);
+  }
+  else if((Te.count()>std::max(Te_ba.count(),Tmax.count()/2))&&(Te.count()<Tmax.count())){
+    p=pow((1-Te/Tmax),2);
+    NFD_LOG_DEBUG("p=(1-Te/Tmax)**2== "<<p);
+  }
+  else{
+    NFD_LOG_DEBUG("p=0");
+    p=0;
+  }
+
+  if((rand()/RAND_MAX)<p){
+    NFD_LOG_DEBUG("达到插入概率，可以插入");
+    m_cs.insert(data);
+  }
   // CS insert
-  m_cs.insert(data);
+  //m_cs.insert(data);
 
   //保存邻居缓存内容的名字
   it = face_info.find(const_cast<FaceEndpoint&>(ingress));
@@ -836,7 +887,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     beforeSatisfyInterest(*pitEntry, ingress.face, data);
 
     std::set<std::pair<Face*, EndpointId>> unsatisfiedDownstreams;
-    m_isHonest=m_strategyChoice.findEffectiveStrategy(*pitEntry).satisfyInterest(pitEntry, ingress, data,
+    nodeType=m_strategyChoice.findEffectiveStrategy(*pitEntry).satisfyInterest(pitEntry, ingress, data,
                                                                       satisfiedDownstreams, unsatisfiedDownstreams);
     for (const auto& endpoint : unsatisfiedDownstreams) {
       unsatisfiedPitEntries.emplace(endpoint, pitEntry);
@@ -881,15 +932,23 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   }
 
   shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
-  if(!m_isHonest)
+  shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
+  if(nodeType==maliciousNode)
   {
-    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
     signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
-
-    data1->setSignatureInfo(*signatureInfo1);
     NFD_LOG_DEBUG("modify signature maliciously, data=" << data.getName());
-    NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
   }
+  if(nodeType==verifyNode)
+  {
+    if(data.getSignatureInfo().getSignatureType()==1){
+      signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示验证过的假包
+      if(data.getTag<ndn::lp::ExtraDelayTag>()!=nullptr){
+           data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4+*(data.getTag<ndn::lp::ExtraDelayTag>())) );
+      }
+    }
+  }
+  data1->setSignatureInfo(*signatureInfo1);
+  NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
   
   // foreach pending downstream
   for (const auto& downstream : satisfiedDownstreams) {
