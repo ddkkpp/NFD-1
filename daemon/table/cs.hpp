@@ -260,7 +260,7 @@ private:
 
   //const_iterator
   std::pair<Data, bool>
-  findImpl(const Interest& interest, int* isUnpHit) const;
+  findImpl(const Interest& interest, int* isUnpHit);
 
   void
   setPolicyImpl(unique_ptr<Policy> policy);

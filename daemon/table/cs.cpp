@@ -143,7 +143,7 @@ Cs::eraseImpl(const Name& prefix, size_t limit)
 }
 
 std::pair<Data, bool>
-Cs::findImpl(const Interest& interest, int* isUnpHit) const
+Cs::findImpl(const Interest& interest, int* isUnpHit)
 {
   auto emptyData=Data(interest.getName());
   // NFD_LOG_DEBUG("table_prt中有");
@@ -185,9 +185,8 @@ Cs::findImpl(const Interest& interest, int* isUnpHit) const
       m_policy->beforeUse(*match, unprotectedRegion);
     }
     else{
-      NFD_LOG_DEBUG("命中data为假,返回contentStoreMiss,删除table和queue");
-      m_policy->beforeErase(*match, unprotectedRegion);
-      return std::make_pair(emptyData, false);
+      NFD_LOG_DEBUG("命中data为假,删除table和queue");
+      eraseImpl(interest.getName(),5);
     }
     *isUnpHit=1;
     NFD_LOG_DEBUG("isUnpHit= "<<*isUnpHit);
@@ -300,16 +299,16 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
   //   data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
   // }
   //如果命中缓存是假包，把SignatureTypeValue改为100，表示NACK
-  // if(data1->getSignatureInfo().getSignatureType()==1){
-  //   NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
-  //   shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data1->getSignatureInfo()));
-  //   signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示我验证过的假包
-  //   data1->setSignatureInfo(*signatureInfo1);
-  //   this->erase(data1->getName(),5,[=] (size_t nErased){}) ;//删除污染缓存
-  // }
-  // else{
-  //   NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName());
-  // }
+  if(data1->getSignatureInfo().getSignatureType()==1){
+    NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
+    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data1->getSignatureInfo()));
+    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示我验证过的假包
+    data1->setSignatureInfo(*signatureInfo1);
+    //this->erase(data1->getName(),5,[=] (size_t nErased){}) ;//删除污染缓存
+  }
+  else{
+    NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName());
+  }
 }
 
 void 
