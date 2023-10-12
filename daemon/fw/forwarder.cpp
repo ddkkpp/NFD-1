@@ -740,10 +740,10 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 
   // receive Data
   NFD_LOG_DEBUG("onIncomingData in=" << ingress << " data=" << data.getName());
-  if(data.getSignatureInfo().getSignatureType()==100){
-    NFD_LOG_DEBUG("Kim方案:丢弃验证过的假包");
-    return;
-  }
+  // if(data.getSignatureInfo().getSignatureType()==100){
+  //   NFD_LOG_DEBUG("Kim方案:丢弃验证过的假包");
+  //   return;
+  // }
 
   data.setTag(make_shared<lp::IncomingFaceIdTag>(ingress.face.getId()));
   ++m_counters.nInData;
@@ -765,7 +765,58 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
-  CS insert
+//此处决定是否缓存
+  // auto now=time::steady_clock::now();
+  // auto Tmax=1_s;
+  // auto Te=0_ns;
+  // int count=0;
+  // auto Te_ba=0_ns;
+  // int count_ba=0;
+  // double p;
+  // //一个pitEntry对应一个interest，一个outrecord对应这个interest的一个上游端口
+  // for (const auto& pitEntry : pitMatches) {
+  //   for(const auto& outRecord:pitEntry->getOutRecords()){
+  //       Te+= now - outRecord.getLastRenewed();
+  //       ++count;
+  //   }
+  // }
+  // NFD_LOG_DEBUG("Te_sum = "<<Te<<", count = "<<count);
+  // Te=Te/count;
+  // NFD_LOG_DEBUG("Te = "<<Te);
+
+  // for (const auto& pitEntry : m_pit) {
+  //   for(const auto& outRecord:pitEntry.getOutRecords()){
+  //       Te_ba+= now - outRecord.getLastRenewed();
+  //       ++count_ba;
+  //   }
+  // }
+  // NFD_LOG_DEBUG("Te_ba_sum = "<<Te_ba<<", count_ba = "<<count_ba);
+  // Te_ba=Te_ba/count_ba;
+  // NFD_LOG_DEBUG("Te_ba = "<<Te_ba);
+
+  // if(Te.count()<=std::min(Te_ba.count(),Tmax.count()/2)){
+  //   NFD_LOG_DEBUG("p=1");
+  //   p=1;
+  // }
+  // else if((Te.count()>std::min(Te_ba.count(),Tmax.count()/2))&&(Te.count()<=std::max(Te_ba.count(),Tmax.count()/2))){
+  //   p=1-Te / Tmax;
+  //   NFD_LOG_DEBUG("p=1-Te/Tmax= "<<p);
+  // }
+  // else if((Te.count()>std::max(Te_ba.count(),Tmax.count()/2))&&(Te.count()<Tmax.count())){
+  //   p=pow((1-Te/Tmax),2);
+  //   NFD_LOG_DEBUG("p=(1-Te/Tmax)**2== "<<p);
+  // }
+  // else{
+  //   NFD_LOG_DEBUG("p=0");
+  //   p=0;
+  // }
+
+  // if((rand()/RAND_MAX)<p){
+  //   NFD_LOG_DEBUG("达到插入概率，可以插入");
+  //   m_cs.insert(data);
+  // }
+  
+ // CS insert
   m_cs.insert(data);
 
   //保存邻居缓存内容的名字
