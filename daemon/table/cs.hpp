@@ -107,16 +107,12 @@ public:
       miss(interest);
       return;
     }
-    outlog("hit");
     //shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match->getData()));
-    outlog("hit");
     // shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match.first.getData()));
     shared_ptr<ndn::Data> data1 = make_shared<Data>(const_cast<Data&>(match.first));
     outlog(data1->getName().toUri());
-    outlog("hit");
     //提取出来的缓存的extradelay置为0
     data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(0));
-    outlog("hit");
     //如果命中的是非保护区，则需要验证时延
     if(isUnpHit==1){
       data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));

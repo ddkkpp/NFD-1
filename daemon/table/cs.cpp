@@ -180,7 +180,15 @@ Cs::findImpl(const Interest& interest, int* isUnpHit) const
     NFD_LOG_DEBUG("非保护区find " << prefix << " matching " << match->getName());
     auto data=match->getData();
     NFD_LOG_DEBUG("命中data= "<<data.getName());
-    m_policy->beforeUse(*match, unprotectedRegion);
+    if(data.getSignatureInfo().getSignatureType()==255){
+      NFD_LOG_DEBUG("命中data为真");
+      m_policy->beforeUse(*match, unprotectedRegion);
+    }
+    else{
+      NFD_LOG_DEBUG("命中data为假,返回contentStoreMiss,删除table和queue");
+      m_policy->beforeErase(*match, unprotectedRegion);
+      return std::make_pair(emptyData, false);
+    }
     *isUnpHit=1;
     NFD_LOG_DEBUG("isUnpHit= "<<*isUnpHit);
     // return *match;
@@ -276,8 +284,8 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
     if (hopCountTag != nullptr) { // e.g., packet came from local node's cache
       data1->setTag(make_shared<lp::HopCountTag>(hc));
     }
-    uint32_t ei=0;
-    uint64_t seq=data1->getName().get(-1).toSequenceNumber();
+    // uint32_t ei=0;
+    // uint64_t seq=data1->getName().get(-1).toSequenceNumber();
     // auto str=data1->getName().toUri(ndn::name::UriFormat::CANONICAL);
     // char* p;
     // uint64_t name=std::strtoul(str.c_str(), &p, 10);//使用stoul报错
@@ -292,16 +300,16 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
   //   data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
   // }
   //如果命中缓存是假包，把SignatureTypeValue改为100，表示NACK
-  if(data1->getSignatureInfo().getSignatureType()==1){
-    NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
-    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data1->getSignatureInfo()));
-    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示我验证过的假包
-    data1->setSignatureInfo(*signatureInfo1);
-    this->erase(data1->getName(),5,[=] (size_t nErased){}) ;//删除污染缓存
-  }
-  else{
-    NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName());
-  }
+  // if(data1->getSignatureInfo().getSignatureType()==1){
+  //   NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
+  //   shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data1->getSignatureInfo()));
+  //   signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示我验证过的假包
+  //   data1->setSignatureInfo(*signatureInfo1);
+  //   this->erase(data1->getName(),5,[=] (size_t nErased){}) ;//删除污染缓存
+  // }
+  // else{
+  //   NFD_LOG_DEBUG("命中缓存是真包 "<<data1->getName());
+  // }
 }
 
 void 

@@ -740,10 +740,10 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 
   // receive Data
   NFD_LOG_DEBUG("onIncomingData in=" << ingress << " data=" << data.getName());
-  if(data.getSignatureInfo().getSignatureType()==100){
-    NFD_LOG_DEBUG("Kim方案:丢弃验证过的假包");
-    return;
-  }
+  // if(data.getSignatureInfo().getSignatureType()==100){
+  //   NFD_LOG_DEBUG("Kim方案:丢弃验证过的假包");
+  //   return;
+  // }
 
   data.setTag(make_shared<lp::IncomingFaceIdTag>(ingress.face.getId()));
   ++m_counters.nInData;
