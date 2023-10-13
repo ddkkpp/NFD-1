@@ -370,7 +370,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   
 //此处决定是否缓存
   auto now=time::steady_clock::now();
-  auto Tmax=1_s;
+  auto Tmax=1000000000_ns;
   auto Te=0_ns;
   int count=0;
   auto Te_ba=0_ns;
@@ -402,11 +402,11 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     p=1;
   }
   else if((Te.count()>std::min(Te_ba.count(),Tmax.count()/2))&&(Te.count()<=std::max(Te_ba.count(),Tmax.count()/2))){
-    p=1-Te / Tmax;
+    p=1-double(Te.count()) / double(Tmax.count());
     NFD_LOG_DEBUG("p=1-Te/Tmax= "<<p);
   }
   else if((Te.count()>std::max(Te_ba.count(),Tmax.count()/2))&&(Te.count()<Tmax.count())){
-    p=pow((1-Te/Tmax),2);
+    p=pow((1-double(Te.count()) / double(Tmax.count())),2);
     NFD_LOG_DEBUG("p=(1-Te/Tmax)**2== "<<p);
   }
   else{
