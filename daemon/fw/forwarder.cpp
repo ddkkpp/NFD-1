@@ -485,10 +485,12 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   if(nodeType==verifyNode)
   {
     //加验证延时
-    if(data.getTag<ndn::lp::ExtraDelayTag>()!=nullptr){
-          data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4+*(data.getTag<ndn::lp::ExtraDelayTag>())) );
+    if(data1->getTag<ndn::lp::ExtraDelayTag>()!=nullptr){
+      NFD_LOG_DEBUG("原始ExtraDelayTag: "<<*(data1->getTag<ndn::lp::ExtraDelayTag>()));
+          data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4+*(data1->getTag<ndn::lp::ExtraDelayTag>())) );
+      NFD_LOG_DEBUG("现在ExtraDelayTag: "<<*(data1->getTag<ndn::lp::ExtraDelayTag>()));
     }
-    if(data.getSignatureInfo().getSignatureType()==1){
+    if(data1->getSignatureInfo().getSignatureType()==1){
       return;//丢弃
     }
   }
