@@ -482,16 +482,16 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
     NFD_LOG_DEBUG("modify signature maliciously, data=" << data.getName());
   }
-  if(nodeType==verifyNode)
-  {
-    //加验证延时
-    if(data.getTag<ndn::lp::ExtraDelayTag>()!=nullptr){
-          data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4+*(data.getTag<ndn::lp::ExtraDelayTag>())) );
-    }
-    if(data.getSignatureInfo().getSignatureType()==1){
-      return;//丢弃
-    }
-  }
+  // if(nodeType==verifyNode)
+  // {
+  //   //加验证延时
+  //   if(data.getTag<ndn::lp::ExtraDelayTag>()!=nullptr){
+  //         data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4+*(data.getTag<ndn::lp::ExtraDelayTag>())) );
+  //   }
+  //   if(data.getSignatureInfo().getSignatureType()==1){
+  //     return;//丢弃
+  //   }
+  // }
   data1->setSignatureInfo(*signatureInfo1);
   NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
   
