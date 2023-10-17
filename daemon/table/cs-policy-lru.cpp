@@ -94,7 +94,7 @@ LruPolicy::evictEntries(enum csRegion j)
     // NFD_LOG_DEBUG("size_prt= "<<this->getCs()->size_prt()<<" limit= "<<this->getLimit());
     // while (this->getCs()->size_prt() > this->getLimit()) {
     NFD_LOG_DEBUG("size_prt= "<<m_queue_prt.size()<<" limit= "<<this->getLimit());
-    while (m_queue_prt.size() > this->getLimit()/10) {
+    while (m_queue_prt.size() > this->getLimit()/5) {
       NFD_LOG_DEBUG("实际删除保护区内容");
       BOOST_ASSERT(!m_queue_prt.empty());
       EntryRef i = m_queue_prt.front();
@@ -119,7 +119,7 @@ LruPolicy::evictEntries(enum csRegion j)
     // NFD_LOG_DEBUG("size_unp= "<<this->getCs()->size_unp()<<" limit= "<<this->getLimit());
     // while (this->getCs()->size_unp() > this->getLimit()) {
     NFD_LOG_DEBUG("size_unp= "<<m_queue_unp.size()<<" limit= "<<this->getLimit());
-    while (m_queue_unp.size() > this->getLimit()*19/20) {
+    while (m_queue_unp.size() > this->getLimit()*9/5) {
       NFD_LOG_DEBUG("实际删除非保护区内容");
       BOOST_ASSERT(!m_queue_unp.empty());
       NFD_LOG_DEBUG("删除queue_unp");
