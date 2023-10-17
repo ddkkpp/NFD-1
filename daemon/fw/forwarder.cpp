@@ -587,147 +587,146 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       if(probeFilter.Contain(data.getName().get(1).toSequenceNumber(),ei)==cuckoofilter::Ok)
       {
         NFD_LOG_DEBUG("dataname is in probefilter: "<<data.getName()<<", seq: "<<data.getName().get(1).toSequenceNumber());
-        if(!isProbing){//探测结束
-          return;
-        }
-        NFD_LOG_DEBUG("Receive ProbeData in=" << ingress << " data=" << data.getName());
+        if(isProbing){//如果探测结束也不能直接丢弃这个包,因为这同时可能是正常请求的数据
+          NFD_LOG_DEBUG("Receive ProbeData in=" << ingress << " data=" << data.getName());
 
-        //数据为假
-        // if(::ndn::readNonNegativeInteger(data.getSignature().getValue())==std::numeric_limits<uint32_t>::max()){
-        NFD_LOG_DEBUG("signature = "<<data.getSignatureInfo().getSignatureType());
-        if(data.getSignatureInfo().getSignatureType()==1){
-          temp.nReceiveInvalidProbeData+=1;
-          //fep->nReceiveInvalidProbeData+=1;
-          //face_ei.left.replace_key(it, fep);
-          //++((face_ei.left.find(const_cast<FaceEndpoint*>(&ingress)))->first->nReceiveInvalidProbeData);
-          //ingress.nReceiveInvalidProbeData+=1;
-          NFD_LOG_DEBUG("ProbeData is invalid" << " data=" << data.getName());
-          //NFD_LOG_DEBUG("nReceiveInvalidProbeData in " << ingress<<" ++, now is "<<fep->nReceiveInvalidProbeData);
-        }
-        else{
-          NFD_LOG_DEBUG("ProbeData is valid" << " data=" << data.getName());
-        }
-        NFD_LOG_DEBUG("nReceiveInvalidProbeData in " << ingress<<" is "<<temp.nReceiveInvalidProbeData);
-        temp.nReceiveTotalProbeData+=1;
-        face_info.erase(*it);
-        face_info.insert(temp);
-        //ep->nReceiveTotalProbeData+=1;
-        //face_ei.left.replace_key(it, fep);
-        //++(face_ei.left.find(const_cast<FaceEndpoint*>(&ingress))->first->nReceiveTotalProbeData);
-        //判断当前端口是否受到足够探测包
-        NFD_LOG_DEBUG("temp.nReceiveTotalProbeData="<<temp.nReceiveTotalProbeData<<
-                      " temp.nSendTotalProbe="<<temp.nSendTotalProbe);
-        it = face_info.find(const_cast<FaceEndpoint&>(ingress));
-        //收到超过1个假包，则表明恶意
-        if(temp.nReceiveInvalidProbeData>1)
-        {
-          temp.isMalicious=true;
-          NFD_LOG_DEBUG("targetface " <<temp<< " is malicious");
-          isProbing=false;
-          temp.nReceiveInvalidProbeData=0;
-          temp.nReceiveTotalProbeData=0;
-          temp.receiveEnoughProbe=false;
-          face_info.erase(*it);
-          face_info.insert(temp);
-          finishProbing=true;
-
-          auto& e =const_cast<fib::Entry&>(m_fib.findLongestPrefixMatch(data.getName()));//必须是引用类型，否则报错use of deleted function ‘nfd::fib::Entry::Entry(const nfd::fib::Entry&)
-          NFD_LOG_DEBUG("除去fib的恶意端口 entry.prefix() = "<<e.getPrefix());
-          // e.removeNextHop(ingress.face);
-          m_fib.removeNextHop(e, ingress.face);
-          //如果本节点就是恶意，则上游节点都是诚实且缓存都是真的，不必转发反馈以清除缓存和开启探测
-          // for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
-          //   ingress.face.sendInterest(*i);
-          // }
-        }
-        //收到所有探测包后，还没收到超过一个假包，说明诚实
-        else if(temp.nReceiveTotalProbeData==temp.nSendTotalProbe)
-        {
-          //temp.receiveEnoughProbe=true;
-          //face_ei.left.replace_key(it, fep);
-          NFD_LOG_DEBUG("Receive enough ProbeData in=" << ingress);
-        
-        
-          NFD_LOG_DEBUG("now nReceiveInvalidProbeData="<<face_info.find(const_cast<FaceEndpoint&>(ingress))->nReceiveInvalidProbeData<<
-                      "now nReceiveTotalProbeData="<<face_info.find(const_cast<FaceEndpoint&>(ingress))->nReceiveTotalProbeData);
-        // //判断所有端口是否收到足够探测包
-        // allFaceReceiveEnoughProbe=true;
-        // for(auto it =face_info.begin();it!=face_info.end();++it){
-        //     if(!it->receiveEnoughProbe){
-        //       allFaceReceiveEnoughProbe=false;
-        //       NFD_LOG_DEBUG(*it<<".receiveEnoughProbe is false");
-        //       break;
-        //     }
-        // }
-        //判断targetFace是否是恶意端口
-        //由于F分布临界值没有直接的函数实现，所以这里直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实）
-
-          NFD_LOG_DEBUG("targetface " <<temp<< " is honest");
- 
-          //temp.isTarget=false;正在探测和探测结束，都不再对反馈作出开始探测的反应
-          isProbing=false;
-          temp.nReceiveInvalidProbeData=0;
-          temp.nReceiveTotalProbeData=0;
-          temp.receiveEnoughProbe=false;
-          face_info.erase(*it);
-          face_info.insert(temp);
-          
-          finishProbing=true;
-          //探测完成后再转发反馈
-          for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
-            NFD_LOG_DEBUG("转发反馈"<<*i.getName());
-            ingress.face.sendInterest(*i);
+          //数据为假
+          // if(::ndn::readNonNegativeInteger(data.getSignature().getValue())==std::numeric_limits<uint32_t>::max()){
+          NFD_LOG_DEBUG("signature = "<<data.getSignatureInfo().getSignatureType());
+          if(data.getSignatureInfo().getSignatureType()==1){
+            temp.nReceiveInvalidProbeData+=1;
+            //fep->nReceiveInvalidProbeData+=1;
+            //face_ei.left.replace_key(it, fep);
+            //++((face_ei.left.find(const_cast<FaceEndpoint*>(&ingress)))->first->nReceiveInvalidProbeData);
+            //ingress.nReceiveInvalidProbeData+=1;
+            NFD_LOG_DEBUG("ProbeData is invalid" << " data=" << data.getName());
+            //NFD_LOG_DEBUG("nReceiveInvalidProbeData in " << ingress<<" ++, now is "<<fep->nReceiveInvalidProbeData);
           }
-        }
-        // if(allFaceReceiveEnoughProbe){
-        //   NFD_LOG_DEBUG("Receive enough ProbeData in all interfaces");
-        //   double targetFaceMal;
-        //   double totalMal,avgMal,accum,stdev;
-        //   for(it =face_info.begin();it!=face_info.end();++it){
-        //     if(it->isTarget){
-        //       temp=*it;
-        //       temp_old=*it;
-        //       targetFaceMal=(it->nReceiveInvalidProbeData)/(it->nReceiveTotalProbeData);
-        //       NFD_LOG_DEBUG("targetFace is " << *it<<", targetFaceMal is "<<targetFaceMal);
-        //       continue;
-        //     }
-        //     totalMal+=(it->nReceiveInvalidProbeData)/(it->nReceiveTotalProbeData);
-        //   }
-        //   avgMal=totalMal/(face_ei.size()-1);  
-        //   NFD_LOG_DEBUG("avgMal=" << avgMal);
-        //   for(it =face_info.begin();it!=face_info.end();++it){
-        //     if(it->isTarget){
-        //       continue;
-        //     }
-        //     accum+=pow(((it->nReceiveInvalidProbeData) / (it->nReceiveTotalProbeData-avgMal)) , 2);
-        //   }
-        //   stdev=sqrt(accum/(face_ei.size()-1));  
-        //   if(targetFaceMal<(avgMal-3*stdev)){
-        //     temp.isMalicious=true;
-        //     NFD_LOG_DEBUG("targetface " <<temp<< " is malicious");
-        //   }
-        //   else{
-        //     NFD_LOG_DEBUG("targetface " <<temp<< " is honest");
-        //   }
-        //   temp.isTarget=false;
-        //   //face_ei.left.replace_key(targetinBimap, targetFace);
-        //   face_info.erase(temp_old);
-        //   face_info.insert(temp);
-        //   isProbing=false;
-        //   for(auto it =face_info.begin();it!=face_info.end();++it){
-        //       temp=*it;
-        //       temp.nReceiveInvalidProbeData=0;
-        //       temp.nReceiveTotalProbeData=0;
-        //       temp.receiveEnoughProbe=false;
-        //       face_info.erase(*it);
-        //       face_info.insert(temp);
-        //       //face_ei.left.replace_key(it,fep);
-        //   }
-        // }
-        // allFaceReceiveEnoughProbe=false;
+          else{
+            NFD_LOG_DEBUG("ProbeData is valid" << " data=" << data.getName());
+          }
+          NFD_LOG_DEBUG("nReceiveInvalidProbeData in " << ingress<<" is "<<temp.nReceiveInvalidProbeData);
+          temp.nReceiveTotalProbeData+=1;
+          face_info.erase(*it);
+          face_info.insert(temp);
+          //ep->nReceiveTotalProbeData+=1;
+          //face_ei.left.replace_key(it, fep);
+          //++(face_ei.left.find(const_cast<FaceEndpoint*>(&ingress))->first->nReceiveTotalProbeData);
+          //判断当前端口是否受到足够探测包
+          NFD_LOG_DEBUG("temp.nReceiveTotalProbeData="<<temp.nReceiveTotalProbeData<<
+                        " temp.nSendTotalProbe="<<temp.nSendTotalProbe);
+          it = face_info.find(const_cast<FaceEndpoint&>(ingress));
+          //收到超过1个假包，则表明恶意
+          if(temp.nReceiveInvalidProbeData>1)
+          {
+            temp.isMalicious=true;
+            NFD_LOG_DEBUG("targetface " <<temp<< " is malicious");
+            isProbing=false;
+            temp.nReceiveInvalidProbeData=0;
+            temp.nReceiveTotalProbeData=0;
+            temp.receiveEnoughProbe=false;
+            face_info.erase(*it);
+            face_info.insert(temp);
+            finishProbing=true;
 
-        //return;
-      // }
+            auto& e =const_cast<fib::Entry&>(m_fib.findLongestPrefixMatch(data.getName()));//必须是引用类型，否则报错use of deleted function ‘nfd::fib::Entry::Entry(const nfd::fib::Entry&)
+            NFD_LOG_DEBUG("除去fib的恶意端口 entry.prefix() = "<<e.getPrefix());
+            // e.removeNextHop(ingress.face);
+            m_fib.removeNextHop(e, ingress.face);
+            //如果本节点就是恶意，则上游节点都是诚实且缓存都是真的，不必转发反馈以清除缓存和开启探测
+            // for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
+            //   ingress.face.sendInterest(*i);
+            // }
+          }
+          //收到所有探测包后，还没收到超过一个假包，说明诚实
+          else if(temp.nReceiveTotalProbeData==temp.nSendTotalProbe)
+          {
+            //temp.receiveEnoughProbe=true;
+            //face_ei.left.replace_key(it, fep);
+            NFD_LOG_DEBUG("Receive enough ProbeData in=" << ingress);
+          
+          
+            NFD_LOG_DEBUG("now nReceiveInvalidProbeData="<<face_info.find(const_cast<FaceEndpoint&>(ingress))->nReceiveInvalidProbeData<<
+                        "now nReceiveTotalProbeData="<<face_info.find(const_cast<FaceEndpoint&>(ingress))->nReceiveTotalProbeData);
+          // //判断所有端口是否收到足够探测包
+          // allFaceReceiveEnoughProbe=true;
+          // for(auto it =face_info.begin();it!=face_info.end();++it){
+          //     if(!it->receiveEnoughProbe){
+          //       allFaceReceiveEnoughProbe=false;
+          //       NFD_LOG_DEBUG(*it<<".receiveEnoughProbe is false");
+          //       break;
+          //     }
+          // }
+          //判断targetFace是否是恶意端口
+          //由于F分布临界值没有直接的函数实现，所以这里直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实）
+
+            NFD_LOG_DEBUG("targetface " <<temp<< " is honest");
+  
+            //temp.isTarget=false;正在探测和探测结束，都不再对反馈作出开始探测的反应
+            isProbing=false;
+            temp.nReceiveInvalidProbeData=0;
+            temp.nReceiveTotalProbeData=0;
+            temp.receiveEnoughProbe=false;
+            face_info.erase(*it);
+            face_info.insert(temp);
+            
+            finishProbing=true;
+            //探测完成后再转发反馈
+            for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
+              NFD_LOG_DEBUG("转发反馈"<<i->getName());
+              ingress.face.sendInterest(*i);
+            }
+          }
+          // if(allFaceReceiveEnoughProbe){
+          //   NFD_LOG_DEBUG("Receive enough ProbeData in all interfaces");
+          //   double targetFaceMal;
+          //   double totalMal,avgMal,accum,stdev;
+          //   for(it =face_info.begin();it!=face_info.end();++it){
+          //     if(it->isTarget){
+          //       temp=*it;
+          //       temp_old=*it;
+          //       targetFaceMal=(it->nReceiveInvalidProbeData)/(it->nReceiveTotalProbeData);
+          //       NFD_LOG_DEBUG("targetFace is " << *it<<", targetFaceMal is "<<targetFaceMal);
+          //       continue;
+          //     }
+          //     totalMal+=(it->nReceiveInvalidProbeData)/(it->nReceiveTotalProbeData);
+          //   }
+          //   avgMal=totalMal/(face_ei.size()-1);  
+          //   NFD_LOG_DEBUG("avgMal=" << avgMal);
+          //   for(it =face_info.begin();it!=face_info.end();++it){
+          //     if(it->isTarget){
+          //       continue;
+          //     }
+          //     accum+=pow(((it->nReceiveInvalidProbeData) / (it->nReceiveTotalProbeData-avgMal)) , 2);
+          //   }
+          //   stdev=sqrt(accum/(face_ei.size()-1));  
+          //   if(targetFaceMal<(avgMal-3*stdev)){
+          //     temp.isMalicious=true;
+          //     NFD_LOG_DEBUG("targetface " <<temp<< " is malicious");
+          //   }
+          //   else{
+          //     NFD_LOG_DEBUG("targetface " <<temp<< " is honest");
+          //   }
+          //   temp.isTarget=false;
+          //   //face_ei.left.replace_key(targetinBimap, targetFace);
+          //   face_info.erase(temp_old);
+          //   face_info.insert(temp);
+          //   isProbing=false;
+          //   for(auto it =face_info.begin();it!=face_info.end();++it){
+          //       temp=*it;
+          //       temp.nReceiveInvalidProbeData=0;
+          //       temp.nReceiveTotalProbeData=0;
+          //       temp.receiveEnoughProbe=false;
+          //       face_info.erase(*it);
+          //       face_info.insert(temp);
+          //       //face_ei.left.replace_key(it,fep);
+          //   }
+          // }
+          // allFaceReceiveEnoughProbe=false;
+
+          //return;
+        // }
+        }
     }
     //端口正在探测且是普通数据包：直接丢弃
     else if(ingress.isTarget){
