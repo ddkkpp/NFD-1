@@ -433,6 +433,15 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     std::set<std::pair<Face*, EndpointId>> unsatisfiedDownstreams;
     nodeType=m_strategyChoice.findEffectiveStrategy(*pitEntry).satisfyInterest(pitEntry, ingress, data,
                                                                       satisfiedDownstreams, unsatisfiedDownstreams);
+
+    //如果是假包，则在满足pit前就丢包                                                                 
+    if(nodeType==verifyNode)
+    {
+      if(data.getSignatureInfo().getSignatureType()==1){
+        return;//丢弃
+      }
+    }     
+                                                     
     for (const auto& endpoint : unsatisfiedDownstreams) {
       unsatisfiedPitEntries.emplace(endpoint, pitEntry);
     }
