@@ -675,6 +675,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
           finishProbing=true;
           //探测完成后再转发反馈
           for(auto i=laterFeedback.begin();i!=laterFeedback.end();i++){
+            NFD_LOG_DEBUG("转发反馈"<<*i.getName());
             ingress.face.sendInterest(*i);
           }
         }
