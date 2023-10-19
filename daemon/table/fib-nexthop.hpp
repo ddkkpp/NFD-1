@@ -61,9 +61,22 @@ public:
     m_cost = cost;
   }
 
+  double
+  getRank()const
+  {
+    return m_rank;
+  }
+
+  void
+  setRank(double rank)
+  {
+    m_rank=rank;
+  }
+
 private:
   Face* m_face; // pointer instead of reference so that NextHop is movable
   uint64_t m_cost = 0;
+  double m_rank=0.5;
 };
 
 } // namespace fib

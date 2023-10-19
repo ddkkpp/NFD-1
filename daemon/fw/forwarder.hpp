@@ -27,6 +27,8 @@
 #define NFD_DAEMON_FW_FORWARDER_HPP
 
 #include "cuckoofilter/cuckoofilter.h"
+#include "ns3/simulator.h"
+#include "ns3/nstime.h"
 #include "face-table.hpp"
 #include "forwarder-counters.hpp"
 #include "unsolicited-data-policy.hpp"
@@ -294,6 +296,7 @@ private:
   //face::Face& laterFbFace;
   std::vector<ndn::Interest> laterFeedback;
   bool finishProbing=false;
+  ns3::Time verifyTime=ns3::Simulator::Now();
   //ndn::Scheduler s;
 
 

@@ -76,10 +76,23 @@ BestRouteStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
   auto it = nexthops.end();
 
   if (suppression == RetxSuppressionResult::NEW) {
-    // forward to nexthop with lowest cost except downstream
-    it = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
-      return isNextHopEligible(ingress.face, interest, nexthop, pitEntry);
-    });
+    //forward to nexthop with lowest cost except downstream
+    // it = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
+    //   return isNextHopEligible(ingress.face, interest, nexthop, pitEntry);
+    // });
+    //找到第一个最大的rank对应的nexthop
+    NFD_LOG_DEBUG("接下来找第一个最大的rank对应的nexthop");
+    double max_rank=0;
+    for(auto i=nexthops.begin();i!=nexthops.end();i++){
+      if(isNextHopEligible(ingress.face, interest, *i, pitEntry)){
+          NFD_LOG_DEBUG("face"<<i->getFace().getId()<<" rank "<<i->getRank());
+          if(i->getRank()>max_rank){
+            NFD_LOG_DEBUG("将max_rank变成"<<i->getRank());
+            max_rank=i->getRank();
+            it=i;
+          }
+      }
+    }
 
     if (it == nexthops.end()) {
       NFD_LOG_DEBUG(interest << " from=" << ingress << " noNextHop");

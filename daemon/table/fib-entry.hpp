@@ -81,6 +81,7 @@ public:
   bool
   hasNextHop(const Face& face) const;
 
+
 private:
   /** \brief adds a NextHop record to the entry
    *

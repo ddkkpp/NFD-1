@@ -82,6 +82,11 @@ MulticastStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
       continue;
     }
 
+    //如果rank低于0.1，则不转发
+    if(nexthop.getRank()<0.1){
+      continue;
+    }
+    
     NFD_LOG_DEBUG(interest << " from=" << ingress << " pitEntry-to=" << outFace.getId());
     auto* sentOutRecord = this->sendInterest(interest, outFace, pitEntry);
     if (sentOutRecord && suppressResult == RetxSuppressionResult::FORWARD) {
