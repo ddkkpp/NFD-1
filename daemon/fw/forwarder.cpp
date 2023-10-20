@@ -421,7 +421,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       double cur_rank=(it->getRank()+rank_change)/2;
       it->setRank(cur_rank);
       NFD_LOG_DEBUG("cur_rank: "<<it->getRank());
-      return;//丢弃
+      //return;//丢弃
     }
     else{
       auto rank_change=0.99;
