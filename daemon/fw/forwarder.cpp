@@ -100,23 +100,55 @@ Forwarder::probe(const Interest& interest, const FaceEndpoint& ingress){
   NFD_LOG_DEBUG("start probing");
   auto it = face_info.find(const_cast<FaceEndpoint&>(ingress));
   //由于F分布临界值没有直接的函数实现，所以之后直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实），这里的nSendTotalProbe如果改变后，后面的判定恶意的代码也要改变
-  for(auto i=it->cachedContentName.rbegin();i!=it->cachedContentName.rend();i++)
+  int k=0;
+  for(auto i=it->cachedContentName.rbegin();i!=it->cachedContentName.rend();i++, k++)
   {
     if(*i!=interest.getName())
     {
-    shared_ptr<Name> nameWithSequence = make_shared<Name>(*i);
-    shared_ptr<Interest> probe = make_shared<Interest>();
-    uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
-    probe->setNonce(nonce);
-    NFD_LOG_DEBUG("set nouce");
-    probe->setName(*nameWithSequence);
-    NFD_LOG_DEBUG("probe is"<<probe->getName());
-    
-    ingress.face.sendInterest(*probe);
-    auto seq=probe->getName().get(1).toSequenceNumber();
-    probeFilter.Add(seq,0);//记录probe的name
-    NFD_LOG_DEBUG("add to probefilter: "<<seq);
+      shared_ptr<Name> nameWithSequence = make_shared<Name>(*i);
+      shared_ptr<Interest> probe = make_shared<Interest>();
+      uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
+      probe->setNonce(nonce);
+      NFD_LOG_DEBUG("set nouce");
+      probe->setName(*nameWithSequence);
+      NFD_LOG_DEBUG("probe is"<<probe->getName());
+      
+      ingress.face.sendInterest(*probe);
+      auto seq=probe->getName().get(1).toSequenceNumber();
+      probeFilter.Add(seq,0);//记录probe的name
+      NFD_LOG_DEBUG("add to probefilter: "<<seq);
     }
+  }
+  //如果由于内容流行度过高，导致攻击开始后，攻击节点的邻居还未收到至少2个包以放入预探测的缓存，则随便再探测某个内容（这里以seq为1和2的兴趣为示范）
+  if(k<2){
+      shared_ptr<Name> nameWithSequence = make_shared<Name>(interest.getName().getPrefix(-1));
+      nameWithSequence->appendSequenceNumber(1);
+      shared_ptr<Interest> probe = make_shared<Interest>();
+      uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
+      probe->setNonce(nonce);
+      NFD_LOG_DEBUG("set nouce");
+      probe->setName(*nameWithSequence);
+      NFD_LOG_DEBUG("probe is"<<probe->getName());
+      
+      ingress.face.sendInterest(*probe);
+      auto seq=probe->getName().get(1).toSequenceNumber();
+      probeFilter.Add(seq,0);//记录probe的name
+      NFD_LOG_DEBUG("add to probefilter: "<<seq);
+  }
+    if(k<1){
+      shared_ptr<Name> nameWithSequence = make_shared<Name>(interest.getName().getPrefix(-1));
+      nameWithSequence->appendSequenceNumber(2);
+      shared_ptr<Interest> probe = make_shared<Interest>();
+      uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
+      probe->setNonce(nonce);
+      NFD_LOG_DEBUG("set nouce");
+      probe->setName(*nameWithSequence);
+      NFD_LOG_DEBUG("probe is"<<probe->getName());
+      
+      ingress.face.sendInterest(*probe);
+      auto seq=probe->getName().get(1).toSequenceNumber();
+      probeFilter.Add(seq,0);//记录probe的name
+      NFD_LOG_DEBUG("add to probefilter: "<<seq);
   }
   // for(size_t i=0;i<nSendTotalProbe;i++){
   //   NFD_LOG_DEBUG("enter for");
