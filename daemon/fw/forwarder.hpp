@@ -38,6 +38,22 @@
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
+#include <queue>
+#include <map>
+#include <vector>
+#include <unordered_set>
+#include "ns3/watchdog.h"
+#include "ns3/nstime.h"
+#include "ns3/simulator.h"
+#include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/point-to-point-module.h"
+#include "ns3/point-to-point-layout-module.h"
+#include "ns3/ptr.h"
+#include "ns3/net-device.h"
+#include "ns3/channel.h"
+#include "ns3/node.h"
+#include "ns3/ndnSIM/model/ndn-net-device-transport.hpp"
 
 namespace nfd {
 
@@ -131,6 +147,8 @@ public:
   void
   setConfigFile(ConfigFile& configFile);
 
+  void SetWatchDog(double t);
+
 public:
   /** \brief trigger before PIT entry is satisfied
    *  \sa Strategy::beforeSatisfyInterest
@@ -149,6 +167,49 @@ public:
   /** \brief Signals when the incoming interest pipeline gets a miss from the content store
    */
   signal::Signal<Forwarder, Interest> afterCsMiss;
+  
+  ns3::Watchdog computePITWD;  
+  ns3::Time PitTimeout = ns3::Seconds(2);
+  int m=10;
+  ns3::Time avgTotalDelay;//所有前缀的延迟的平均值
+  ns3::Time DH=PitTimeout*4/5;
+  int totalPit=0;//总占据pit
+  std::queue<int> totalPitSeries;
+  int avgTotalPit=0;
+  int minAllocPit=100;//每个前缀的pit初步上限
+  int minAcceptRate=500;//每个前缀的兴趣包速率初步上限
+  std::unordered_set<std::string> allPrefix;//经过的前缀
+  int pitTotalCapacity=1000;//总共Pit容量限制
+  int unallocPitCapacity=1000;//未分配pit容量
+  int curUnallocPit=0;//未分配pit空间中的占据量
+  std::unordered_set<std::string> unallocName;//未分配空间中占据的pit完整name
+
+  std::map<std::string, std::queue<int>> pitSeries;//每个前缀的历史pit序列，滑动更新
+  std::map<std::string, int> curPit;//每个前缀的当前pit
+  std::map<std::string, int> avgPit;//每个前缀的平均pit
+
+  std::map<std::string, int> allocPit;//每个前缀分配的pit容量
+  //std::map<std::string, double> tao;//每个前缀的波动状态
+  double tao=1;//波动状态
+  std::map<std::string, int> rate;//每个前缀的兴趣包到达速率
+  std::map<std::string, int> numInterest;//每个前缀在当前周期的兴趣包到达数目
+
+  std::unordered_set<std::string> suspectPrefix;//速率超标的可疑前缀
+  //std::unordered_set<std::string> curMaliciousPrefix;//当前恶意前缀
+  std::unordered_set<std::string> maliciousPrefix;//恶意前缀
+
+  int timePitSeries=0;
+  int timeDelaySeries=0;
+
+  std::map<std::string, ns3::Time> sendInterestTime;//每个兴趣包（完整名字，非前缀）的到达时刻
+  std::map<std::string, std::vector<ns3::Time>> delaySeries;//每个前缀的历史delay序列，周期刷新
+  std::map<std::string, ns3::Time> avgDelay;//每个前缀的平均delay
+  std::map<std::string, double> deltaRateDelay;//每个前缀的delay变化比例
+  std::map<std::string, int> numData;//每个前缀到来的数据包数目
+  std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
+
+  int mynodeid=0;
+  std::map<std::string, int> noData;
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline

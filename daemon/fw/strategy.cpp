@@ -365,5 +365,14 @@ Strategy::lookupFib(const pit::Entry& pitEntry) const
   return *fibEntry; // only occurs if no delegation finds a FIB nexthop
 }
 
+void 
+Strategy::beforeExpirePendingInterest(pit::Entry entry){
+  auto prefix = entry.getName().getPrefix(1).toUri();
+  m_forwarder.delaySeries[prefix].push_back(ns3::Seconds(2));
+  for (auto num : m_forwarder.delaySeries[prefix]) {
+    NFD_LOG_DEBUG(num<<" ");
+  }
+}
+
 } // namespace fw
 } // namespace nfd

@@ -275,6 +275,9 @@ public: // triggers
   virtual void
   afterNewNextHop(const fib::NextHop& nextHop, const shared_ptr<pit::Entry>& pitEntry);
 
+  virtual void
+  beforeExpirePendingInterest(pit::Entry);
+
 protected: // actions
   /**
    * \brief Send an Interest packet.
