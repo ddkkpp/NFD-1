@@ -189,8 +189,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           numInterest[prefix]+=1;
           return;
         }
-    }
     totalPit++;
+    }
 
 
 
