@@ -150,15 +150,15 @@ void computePITWDCallback(Forwarder *ptr)
               ptr->noData[pair.first]=0;
             }
             NFD_LOG_DEBUG("noData "<<ptr->noData[pair.first]);
-            if(ptr->noData[pair.first]>20){//2s没有数据到来，则清空pit
+            if(ptr->noData[pair.first]==20){//2s没有数据到来，则清空pit
               NFD_LOG_DEBUG("curPit "<<ptr->curPit[pair.first]);
-              ptr->totalPit=ptr->totalPit - ptr->curPit[pair.first] - ptr->curUnallocPit;
+              ptr->totalPit=ptr->totalPit - ptr->curPit[pair.first] - ptr->curUnallocPit+7;
               ptr->curPit[pair.first]=0;
               ptr->curUnallocPit=0;
               while(!ptr->pitSeries[pair.first].empty()){
                     ptr->pitSeries[pair.first].pop();
               }
-              ptr->noData[pair.first]=0;
+              //ptr->noData[pair.first]=0;
             }
             NFD_LOG_DEBUG("prefix: "<<pair.first);
             float sum = 0;
