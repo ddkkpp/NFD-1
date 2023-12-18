@@ -111,9 +111,9 @@ public: // mutation
   addOrUpdateNextHop(Entry& entry, Face& face, uint64_t cost);
 
   enum class RemoveNextHopResult {
-    NO_SUCH_NEXTHOP, ///< the nexthop is not found
-    NEXTHOP_REMOVED, ///< the nexthop is removed and the fib entry stays
-    FIB_ENTRY_REMOVED ///< the nexthop is removed and the fib entry is removed
+    NO_SUCH_NEXTHOP=0, ///< the nexthop is not found
+    NEXTHOP_REMOVED=1, ///< the nexthop is removed and the fib entry stays
+    FIB_ENTRY_REMOVED=2 ///< the nexthop is removed and the fib entry is removed
   };
 
   /** \brief Remove the NextHop record for \p face from \p entry

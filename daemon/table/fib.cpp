@@ -24,10 +24,14 @@
  */
 
 #include "fib.hpp"
+#include "common/logger.hpp"
 #include "pit-entry.hpp"
 #include "measurements-entry.hpp"
 
 #include <ndn-cxx/util/concepts.hpp>
+
+
+NFD_LOG_INIT(fib);
 
 namespace nfd {
 namespace fib {
@@ -146,6 +150,7 @@ Fib::addOrUpdateNextHop(Entry& entry, Face& face, uint64_t cost)
 Fib::RemoveNextHopResult
 Fib::removeNextHop(Entry& entry, const Face& face)
 {
+  NFD_LOG_DEBUG(face.getId());
   bool isRemoved = entry.removeNextHop(face);
 
   if (!isRemoved) {

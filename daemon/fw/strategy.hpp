@@ -197,7 +197,7 @@ public: // triggers
    */
   virtual void
   afterContentStoreHit(const Data& data, const FaceEndpoint& ingress,
-                        const shared_ptr<pit::Entry>& pitEntry);
+                        const shared_ptr<pit::Entry>& pitEntry, bool needVerifyDelay);
 
   /** \brief trigger after Data is received
    *

@@ -30,6 +30,7 @@
 #include <ndn-cxx/lp/tags.hpp>
 #include "cuckoofilter/cuckoofilter.h"
 #include <string>
+#include "common/global.hpp"
 
 namespace nfd {
 namespace cs {
@@ -115,15 +116,21 @@ public:
     data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(0));
     //如果命中的是非保护区，则需要验证时延
     if(isUnpHit==1){
+      outlog("find:isUnpHit= ");
+      outlog(std::to_string(isUnpHit));
+      csVerify(data1);
       data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));
+      hit(interest, *data1, true);
+      return;
     }
-    std::cout<<"find:isUnpHit= "<<isUnpHit;
+    outlog("find:isUnpHit= ");
+      outlog(std::to_string(isUnpHit));
     //hpp文件无法使用NFD_LOG，所以在cpp中实现
     csVerify(data1);
 
 
 
-    hit(interest, *data1);
+    hit(interest, *data1, false);
   }
 
   void 

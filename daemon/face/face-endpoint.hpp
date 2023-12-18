@@ -65,6 +65,7 @@ public:
   double rateofReceivetoSend=0.9;
   bool receiveEnoughProbe=false;
   bool isMalicious=false;
+  bool hasdetected=false;
   std::deque<::ndn::Name> cachedContentName;
   //std::set<::ndn::Name> cachedContentName;
 

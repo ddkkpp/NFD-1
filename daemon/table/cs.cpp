@@ -299,7 +299,7 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
   //   data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
   // }
   //如果命中缓存是假包，把SignatureTypeValue改为100，表示NACK
-  if(data1->getSignatureInfo().getSignatureType()==1){
+  if(data1->getSignatureInfo().getSignatureType()==2){
     NFD_LOG_DEBUG("命中缓存是假包, 将其SignatureType改为100 "<<data1->getName());
     shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data1->getSignatureInfo()));
     signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(100));//100表示我验证过的假包

@@ -184,7 +184,7 @@ MalBestRouteStrategy2::sendData(const Data& data, Face& egress, const shared_ptr
 {
     shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
     shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
-    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
+    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(2));//1表示假包
 
     data1->setSignatureInfo(*signatureInfo1);
     NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
