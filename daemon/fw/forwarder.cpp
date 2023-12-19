@@ -183,7 +183,7 @@ void computePITWDCallback(Forwarder *ptr)
             if(ptr->allocPit.find(pair.first)==ptr->allocPit.end()){
               ptr->allocPit[pair.first]=ptr->minAllocPit;
             }
-            int nowRate = ptr->numInterest[pair.first] *(ns3::Seconds(1).GetInteger()/(ptr->watchdogPeriod.GetInteger()*10));
+            int nowRate = ptr->numInterest[pair.first] *(ns3::Seconds(1).GetMilliSeconds()/(ptr->watchdogPeriod.GetMilliSeconds()*10));
             if(ptr->mynodeid==ptr->BTNkId){
               if(nowRate > std::max(ptr->rate[pair.first], ptr->minAcceptRate) * ptr->tao)//添加可疑前缀
               {
@@ -251,7 +251,8 @@ void computePITWDCallback(Forwarder *ptr)
     }
 
 
-    if(ptr->countSmallPeriod==10){
+  if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
+    if(ptr->countSmallPeriod==10){//每500ms小周期统计一次face的delay平均值
         for(const auto& pair: ptr->delaySeriesOfFace){
             if(ptr->delaySeriesOfFace.find(pair.first)==ptr->delaySeriesOfFace.end()){
               NFD_LOG_DEBUG("delaySeriesOfFace has no");
@@ -284,11 +285,12 @@ void computePITWDCallback(Forwarder *ptr)
         ptr->countSmallPeriod=0; 
     }
 
-    if(ptr->count==100){
+    if(ptr->count==100){//每5s大周期统计一次face的delay平均值
       for(const auto& pair: ptr->numInterestOfFace){
+        NFD_LOG_DEBUG(pair.first);
         //端口速率
-        ptr->rateOfFace[pair.first] = ptr->numInterestOfFace[pair.first] *(ns3::Seconds(5).GetInteger()/(ptr->watchdogPeriod.GetInteger()*100));
-        NFD_LOG_DEBUG("rateOfFace "<<pair.first.getId()<<" "<<ptr->rateOfFace[pair.first]);
+        ptr->rateOfFace[pair.first] = ptr->numInterestOfFace[pair.first] *(ns3::Seconds(1).GetMilliSeconds()/(ptr->watchdogPeriod.GetMilliSeconds()*100));
+        NFD_LOG_DEBUG("rateOfFace "<<pair.first<<" "<<ptr->rateOfFace[pair.first]);
         for(const auto& pair3: ptr->rateOfFace){
             ptr->avgRateOfAllFace += ptr->rateOfFace[pair3.first];
         }
@@ -310,6 +312,7 @@ void computePITWDCallback(Forwarder *ptr)
       NFD_LOG_DEBUG("avgRateOfAllFace "<<ptr->avgRateOfAllFace);
       //端口rtt
       for(const auto& pair: ptr->avgDelaySeriesOfFace){
+        NFD_LOG_DEBUG(pair.first);
         if(ptr->avgDelaySeriesOfFace.find(pair.first)==ptr->avgDelaySeriesOfFace.end()){
           NFD_LOG_DEBUG("avgDelaySeriesOfFace has no");
         }
@@ -325,16 +328,17 @@ void computePITWDCallback(Forwarder *ptr)
               sum2 = sum2 / (ptr->avgDelaySeriesOfFace[pair.first].size());
             }
             ptr->avgDelayOfFace[pair.first]=sum2;
-            NFD_LOG_DEBUG("avgDelayOfFace "<<pair.first.getId()<<" "<<ptr->avgDelayOfFace[pair.first]);
+            NFD_LOG_DEBUG("avgDelayOfFace "<<pair.first<<" "<<ptr->avgDelayOfFace[pair.first]);
             ptr->avgDelaySeriesOfFace[pair.first].clear();
         } 
       }
       for(const auto& pair4: ptr->avgDelayOfFace){
           ptr->avgDelayOfAllFace += ptr->avgDelayOfFace[pair4.first];
       }
+      NFD_LOG_DEBUG("avgDelayOfFace.size: "<<ptr->avgDelayOfFace.size());
       ptr->avgDelayOfAllFace = ptr->avgDelayOfAllFace / ptr->avgDelayOfFace.size();
       NFD_LOG_DEBUG("avgDelayOfAllFace "<<ptr->avgDelayOfAllFace);
-
+      //确定恶意端口
       for(const auto& pair5: ptr->avgDelaySeriesOfFace){
         if(ptr->malirateOfFace[pair5.first]>0.5||ptr->avgDelayOfFace[pair5.first]>2*ptr->avgDelayOfAllFace||ptr->rateOfFace[pair5.first]>2*ptr->avgRateOfAllFace){
           NFD_LOG_DEBUG("malicious face: "<<pair5.first);
@@ -343,8 +347,10 @@ void computePITWDCallback(Forwarder *ptr)
       }
       ptr->count=0;
     }
+  }
 
-    ptr->computePITWD.Ping(ptr->watchdogPeriod);
+  ptr->computePITWD.Ping(ptr->watchdogPeriod);
+  //ptr->computePITWD.Ping(ns3::MilliSeconds(50));
 }
 
 static Name
@@ -393,33 +399,33 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
   
-  // SetWatchDog(ns3::MilliSeconds(50));
-  SetWatchDog(50);
+   SetWatchDog(ns3::MilliSeconds(50));
+  //SetWatchDog(50);
 }
 
 Forwarder::~Forwarder() = default;
 
-// void 
-// Forwarder::SetWatchDog(ns3::Time t)
-// {
-//     if (t > ns3::MilliSeconds(0))
-//     {
-//         computePITWD.Ping(t);
-//         computePITWD.SetFunction(computePITWDCallback);
-//         computePITWD.SetArguments<Forwarder *>(this);
-//     }
-// }
-
 void 
-Forwarder::SetWatchDog(double t)
+Forwarder::SetWatchDog(ns3::Time t)
 {
-    if (t > 0)
+    if (t > ns3::MilliSeconds(0))
     {
-        computePITWD.Ping(ns3::MilliSeconds(t));
+        computePITWD.Ping(t);
         computePITWD.SetFunction(computePITWDCallback);
         computePITWD.SetArguments<Forwarder *>(this);
     }
 }
+
+// void 
+// Forwarder::SetWatchDog(double t)
+// {
+//     if (t > 0)
+//     {
+//         computePITWD.Ping(ns3::MilliSeconds(t));
+//         computePITWD.SetFunction(computePITWDCallback);
+//         computePITWD.SetArguments<Forwarder *>(this);
+//     }
+// }
 
 void
 Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingress)
@@ -440,7 +446,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("nodeid"<<mynodeid);
     }
     //丢弃恶意端口的兴趣包
-    if(maliciousFace.find(const_cast<Face&>(ingress.face))!=maliciousFace.end()){
+    if(maliciousFace.find(ingress.face.getId())!=maliciousFace.end()){
       NFD_LOG_DEBUG("discard interest from malicious face: "<<ingress.face.getId());
       return;
     }
@@ -462,17 +468,17 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       }
       numInterest[prefix]+=1;
       if(edgeId.find(mynodeid)!=edgeId.end()){//边缘节点
-          if(numInterestOfFace.find(ingress.face)!=numInterestOfFace.end()){
-            numInterestOfFace[ingress.face]++;
+          if(numInterestOfFace.find(ingress.face.getId())!=numInterestOfFace.end()){
+            numInterestOfFace[ingress.face.getId()]++;
           }
           else{
-            numInterestOfFace[ingress.face]=1;
+            numInterestOfFace[ingress.face.getId()]=1;
           }
-          if(numInterestOfFacePrefix.find(std::make_pair(ingress.face, prefix))!=numInterestOfFacePrefix.end()){
-            numInterestOfFacePrefix[std::make_pair(ingress.face, prefix)] += 1;
+          if(numInterestOfFacePrefix.find(std::make_pair(ingress.face.getId(), prefix))!=numInterestOfFacePrefix.end()){
+            numInterestOfFacePrefix[std::make_pair(ingress.face.getId(), prefix)] += 1;
           }
           else{
-            numInterestOfFacePrefix[std::make_pair(ingress.face, prefix)] = 1;
+            numInterestOfFacePrefix[std::make_pair(ingress.face.getId(), prefix)] = 1;
           }
       }
       NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
@@ -481,11 +487,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
       if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
         NFD_LOG_DEBUG("total pit capacity full, discard");
-        if(numDropInterestOfFace.find(ingress.face)!=numDropInterestOfFace.end()){
-          numDropInterestOfFace[ingress.face]+=1;
+        if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
+          numDropInterestOfFace[ingress.face.getId()]+=1;
         }
         else{
-          numDropInterestOfFace[ingress.face]=1;
+          numDropInterestOfFace[ingress.face.getId()]=1;
         }
         if(numDropInterest.find(prefix)!=numDropInterest.end()){
           numDropInterest[prefix]+=1;
@@ -510,11 +516,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         }
         else{
           NFD_LOG_DEBUG("prefix pit and unalloc all full, discard");
-          if(numDropInterestOfFace.find(ingress.face)!=numDropInterestOfFace.end()){
-            numDropInterestOfFace[ingress.face]+=1;
+          if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
+            numDropInterestOfFace[ingress.face.getId()]+=1;
           }
           else{
-            numDropInterestOfFace[ingress.face]=1;
+            numDropInterestOfFace[ingress.face.getId()]=1;
           }
           if(numDropInterest.find(prefix)!=numDropInterest.end()){
             numDropInterest[prefix]+=1;
@@ -917,12 +923,12 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
       //NFD_LOG_DEBUG("now: "<<ns3::Simulator::Now() <<"sendTime "<< sendInterestTime[data.getName().toUri()]);
       auto del=ns3::Simulator::Now() - sendInterestTime[data.getName().toUri()];
       NFD_LOG_DEBUG("delay"<<del);
-      if(delaySeriesOfFace.find(egress)!=delaySeriesOfFace.end()){
-          delaySeriesOfFace[egress].push_back(del);
+      if(delaySeriesOfFace.find(egress.getId())!=delaySeriesOfFace.end()){
+          delaySeriesOfFace[egress.getId()].push_back(del);
       }
       else{
-          delaySeriesOfFace[egress] = std::vector<ns3::Time>();
-          delaySeriesOfFace[egress].push_back(del);
+          delaySeriesOfFace[egress.getId()] = std::vector<ns3::Time>();
+          delaySeriesOfFace[egress.getId()].push_back(del);
       }
       if(delaySeries.find(prefix)!=delaySeries.end()){
           delaySeries[prefix].push_back(del);
@@ -933,13 +939,7 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
       }
       
   }
-    // NFD_LOG_DEBUG("delaySeries[prefix]size"<<delaySeries[prefix].size()<<"\n");
-    // if(delaySeries[prefix].begin()== delaySeries[prefix].end()){
-    //   NFD_LOG_DEBUG("begin==end");
-    // }
-    // for (auto it = delaySeries[prefix].begin(); it != delaySeries[prefix].end(); ++it) {
-    //     NFD_LOG_DEBUG(*it << " ");  // 访问元素
-    // }
+
  
 
   // TODO traffic manager

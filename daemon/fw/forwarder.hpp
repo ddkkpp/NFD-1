@@ -147,8 +147,8 @@ public:
   void
   setConfigFile(ConfigFile& configFile);
 
-  // void SetWatchDog(ns3::Time t);
-    void SetWatchDog(double t);
+   void SetWatchDog(ns3::Time t);
+    //void SetWatchDog(double t);
 
 public:
   /** \brief trigger before PIT entry is satisfied
@@ -212,18 +212,18 @@ public:
   std::map<std::string, int> numData;//每个前缀到来的数据包数目
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
-  std::map<face::Face, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
-  std::map<face::Face, int> rateOfFace;//每个前缀的兴趣包到达速率
+  std::map<FaceId, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
+  std::map<FaceId, int> rateOfFace;//每个前缀的兴趣包到达速率
   int avgRateOfAllFace=0;
-  std::map<std::pair<face::Face, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
-  std::map<face::Face, double> malirateOfFace;//每个端口的恶意前缀兴趣包占总兴趣包比例
-  std::map<face::Face, std::vector<ns3::Time>> delaySeriesOfFace;//每个端口的历史delay序列，每500ms计算小周期平均delay
-  std::map<face::Face, std::vector<ns3::Time>> avgDelaySeriesOfFace;//每个端口的小周期（500ms)平均delay序列，用以计算大周期（5s）平均delay
-  std::map<face::Face, int> numDropInterestOfFace;//每个端口未响应的兴趣包数目
-  std::map<face::Face, ns3::Time> avgDelayOfFace;//每个端口的平均delay
+  std::map<std::pair<FaceId, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
+  std::map<FaceId, double> malirateOfFace;//每个端口的恶意前缀兴趣包占总兴趣包比例
+  std::map<FaceId, std::vector<ns3::Time>> delaySeriesOfFace;//每个端口的历史delay序列，每500ms计算小周期平均delay
+  std::map<FaceId, std::vector<ns3::Time>> avgDelaySeriesOfFace;//每个端口的小周期（500ms)平均delay序列，用以计算大周期（5s）平均delay
+  std::map<FaceId, int> numDropInterestOfFace;//每个端口未响应的兴趣包数目
+  std::map<FaceId, ns3::Time> avgDelayOfFace;//每个端口的平均delay
   ns3::Time avgDelayOfAllFace=ns3::MilliSeconds(0);
-  std::unordered_set<face::Face> suspectFace;//可疑端口
-  std::unordered_set<face::Face> maliciousFace;//恶意端口
+  std::set<FaceId> suspectFace;//可疑端口
+  std::set<FaceId> maliciousFace;//恶意端口
   
 
 
