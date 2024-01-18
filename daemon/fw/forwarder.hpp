@@ -178,7 +178,7 @@ public:
   std::queue<int> totalPitSeries;
   int avgTotalPit=0;
   int minAllocPit=100;//每个前缀的pit初步上限
-  int minAcceptRate=500;//每个前缀的兴趣包速率初步上限
+  int minAcceptRate=100;//每个前缀的兴趣包速率初步上限
   std::unordered_set<std::string> allPrefix;//经过的前缀
   int pitTotalCapacity=1000;//总共Pit容量限制
   int unallocPitCapacity=1000;//未分配pit容量
@@ -213,8 +213,8 @@ public:
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
   std::map<FaceId, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
-  std::map<FaceId, int> rateOfFace;//每个前缀的兴趣包到达速率
-  int avgRateOfAllFace=0;
+  std::map<FaceId, double> rateOfFace;//每个前缀的兴趣包到达速率
+  double avgRateOfAllFace=0;
   std::map<std::pair<FaceId, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
   std::map<FaceId, double> malirateOfFace;//每个端口的恶意前缀兴趣包占总兴趣包比例
   std::map<FaceId, std::vector<ns3::Time>> delaySeriesOfFace;//每个端口的历史delay序列，每500ms计算小周期平均delay
