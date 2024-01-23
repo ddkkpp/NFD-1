@@ -455,61 +455,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           }
           return;
         }
-        //丢弃恶意前缀
-        if((maliciousPrefix.find(prefix)!=maliciousPrefix.end())&&(mynodeid==BTNkId)){
-          NFD_LOG_DEBUG("discard malicious prefix");
-          if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
-            //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]+=1; });
-            numDropInterestOfFace[ingress.face.getId()]+=1;
-          }
-          else{
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]=1; });
-            numDropInterestOfFace[ingress.face.getId()]=1;
-          }
-          if(numDropInterest.find(prefix)!=numDropInterest.end()){
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]+=1; });
-            numDropInterest[prefix]+=1;
-          }
-          else{
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]=1; });
-            numDropInterest[prefix]=1;
-          }
-          NFD_LOG_DEBUG("numDropInterest: "<<numDropInterest[prefix]);
-          return;
-        }
     }
-    if(prefix != "/localhost"){
-      if(allPrefix.insert(prefix).second){//新前缀
-        allocPit[prefix]=minAllocPit;//初始化前缀桶
-        //tao[prefix]=1;//初始化波动状态
-        numInterest[prefix]=0;//初始化numInterest
-        rate[prefix]=0;
-        usePit[prefix]=0;//初始化usePit
-        curPit[prefix]=0;//初始化curPit
-        unallocPitCapacity=unallocPitCapacity-minAllocPit;//更新未分配空间
-      }
-      numInterest[prefix]+=1;
-      if(edgeId.find(mynodeid)!=edgeId.end()){//边缘节点
-          if(numInterestOfFace.find(ingress.face.getId())!=numInterestOfFace.end()){
-            numInterestOfFace[ingress.face.getId()]++;
-          }
-          else{
-            numInterestOfFace[ingress.face.getId()]=1;
-          }
-          if(numInterestOfFacePrefix.find(std::make_pair(ingress.face.getId(), prefix))!=numInterestOfFacePrefix.end()){
-            numInterestOfFacePrefix[std::make_pair(ingress.face.getId(), prefix)] += 1;
-          }
-          else{
-            numInterestOfFacePrefix[std::make_pair(ingress.face.getId(), prefix)] = 1;
-          }
-      }
-      NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
-      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
-      NFD_LOG_DEBUG("allocPit"<<allocPit[prefix]);
-      NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-      NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
-      if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
+      if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）丢弃兴趣包
         NFD_LOG_DEBUG("total pit capacity full, discard");
         if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
           //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
@@ -530,54 +477,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         }
         return;
       }
-      // if(allocPit.find(prefix)==allocPit.end()){
-      //   allocPit[prefix]=minAllocPit;
-      // }
-      if((curPit[prefix]>allocPit[prefix])&&(mynodeid==BTNkId)){
-        if(curUnallocPit<unallocPitCapacity){//插入未分配空间
-          NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-          NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
-          NFD_LOG_DEBUG("prefix pit capicity full, insert to unalloct");
-          unallocName.insert(interest.getName().toUri());
-          usePit[prefix]++;
-          curUnallocPit++;
-          sendInterestTime[interest.getName().toUri()]=ns3::Simulator::Now();
-          totalPit++;
-          NFD_LOG_DEBUG("totalPit:"<<totalPit);
-        }
-        else{
-          NFD_LOG_DEBUG("prefix pit and unalloc all full, discard");
-          if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
-            //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]+=1; });
-            numDropInterestOfFace[ingress.face.getId()]+=1;
-          }
-          else{
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]=1; });
-            numDropInterestOfFace[ingress.face.getId()]=1;
-          }
-          if(numDropInterest.find(prefix)!=numDropInterest.end()){
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]+=1; });
-            numDropInterest[prefix]+=1;
-          }
-          else{
-            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]=1; });
-            numDropInterest[prefix]=1;
-          }
-          return;
-        }
-      }
-      else{
-      //插入前缀桶
-        usePit[prefix]++;
-        curPit[prefix]+=1;
-        //记录兴趣包发送时间(会被聚合请求覆盖)
-        sendInterestTime[interest.getName().toUri()]=ns3::Simulator::Now();
-        totalPit++;
-        NFD_LOG_DEBUG("totalPit:"<<totalPit);
-      }
     }
-    }
+    
 
 
 
