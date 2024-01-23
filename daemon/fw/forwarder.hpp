@@ -226,12 +226,13 @@ public:
   std::set<FaceId> suspectFace;//可疑端口
   std::set<FaceId> maliciousFace;//恶意端口
   
-
+  std::map<std::string, FaceEndpoint> prefixFace;//每个前缀兴趣包的入端口
 
   int mynodeid=0;
   std::map<std::string, int> noData;
   int BTNkId=5;
-  std::unordered_set<int> edgeId={5};
+  std::unordered_set<int> edgeId={5};//消费者边缘节点
+  std::unordered_set<int> CPId={6,7,8,9,10};//生产者节点
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
