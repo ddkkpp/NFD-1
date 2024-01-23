@@ -51,10 +51,10 @@ void computePITWDCallback(Forwarder *ptr)
     ptr->timeDelaySeries++;
     ptr->count++;
     ptr->countSmallPeriod++;
-    // if(ptr->curPit.empty()){
-    //   NFD_LOG_DEBUG("curPit is empty");
+    // if(ptr->usePit.empty()){
+    //   NFD_LOG_DEBUG("usePit is empty");
     // }
-    for(const auto& pair: ptr->curPit){
+    for(const auto& pair: ptr->usePit){
         if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每50ms采样pit到pitSeries
             if(ptr->maliciousPrefix.find(pair.first)!=ptr->maliciousPrefix.end()){
               //NFD_LOG_DEBUG("prefix: "<<pair.first<<" pit: "<<pair.second);
@@ -176,8 +176,10 @@ void computePITWDCallback(Forwarder *ptr)
             NFD_LOG_DEBUG("noData "<<ptr->noData[pair.first]);
             if(ptr->noData[pair.first]==20){//2s没有数据到来，则清空pit
               NFD_LOG_DEBUG("curPit "<<ptr->curPit[pair.first]);
+              NFD_LOG_DEBUG("usePit "<<ptr->usePit[pair.first]);
               ptr->totalPit=ptr->totalPit - ptr->curPit[pair.first] - ptr->curUnallocPit+7;
               ptr->curPit[pair.first]=0;
+              ptr->usePit[pair.first]=0;
               ptr->curUnallocPit=0;
               while(!ptr->pitSeries[pair.first].empty()){
                     ptr->pitSeries[pair.first].pop();
@@ -208,7 +210,7 @@ void computePITWDCallback(Forwarder *ptr)
             }
             int nowRate = ptr->numInterest[pair.first] *(ns3::Seconds(1).GetMilliSeconds()/(ptr->watchdogPeriod.GetMilliSeconds()*10));
             if(ptr->mynodeid==ptr->BTNkId){
-              if(nowRate > std::max(ptr->rate[pair.first], ptr->minAcceptRate) * ptr->tao)//添加可疑前缀
+              if(nowRate > std::min(ptr->rate[pair.first], ptr->minAcceptRate) * ptr->tao)//添加可疑前缀
               {
                   NFD_LOG_DEBUG("suspectPrefix "<<pair.first);
                   ptr->suspectPrefix.insert(pair.first);
@@ -217,8 +219,9 @@ void computePITWDCallback(Forwarder *ptr)
                   NFD_LOG_DEBUG("rate "<<pair.first<<" "<<nowRate);
               }
               else{//非可疑前缀才动态分配pit空间
-                ptr->unallocPitCapacity = ptr->unallocPitCapacity + ptr->allocPit[pair.first] - std::max(temp, ptr->minAllocPit);//更新unallocPitCapacity
-                ptr->allocPit[pair.first] = std::max(temp, ptr->minAllocPit);//更新allocPit
+                auto alloc = std::min(ptr->unallocPitCapacity+ptr->allocPit[pair.first], std::max(temp, ptr->minAllocPit));
+                ptr->unallocPitCapacity = ptr->unallocPitCapacity + ptr->allocPit[pair.first] - alloc;//更新unallocPitCapacity
+                ptr->allocPit[pair.first] = alloc;//更新allocPit
                 NFD_LOG_DEBUG("unallocPitCapacity "<<ptr->unallocPitCapacity);
                 NFD_LOG_DEBUG("alloc pit "<<ptr->allocPit[pair.first]);
                 NFD_LOG_DEBUG("rate "<<pair.first<<" "<<nowRate);
@@ -229,7 +232,8 @@ void computePITWDCallback(Forwarder *ptr)
             ptr->numData[pair.first]=0;
             ptr->avgTotalPit=ptr->avgTotalPit+ptr->avgPit[pair.first];
         }
-        NFD_LOG_DEBUG("totalPit: "<<ptr->avgTotalPit + ptr->curUnallocPit);
+        //NFD_LOG_DEBUG("totalPit: "<<ptr->avgTotalPit + ptr->curUnallocPit);
+        NFD_LOG_DEBUG("totalPit: "<<ptr->avgTotalPit);
         NFD_LOG_DEBUG("straight totalPit: "<<ptr->totalPit);
         if(ptr->mynodeid==ptr->BTNkId){
           //添加恶意前缀
@@ -240,11 +244,12 @@ void computePITWDCallback(Forwarder *ptr)
                 NFD_LOG_DEBUG("maliciousPrefix "<<element);
                 //ptr->curMaliciousPrefix.insert(element);
                 ptr->maliciousPrefix.insert(element);
+                ptr->curMaliciousPrefix.insert(element);
               }
           }
           //计算波动因子
           if(ptr->suspectPrefix.size()!=0){
-            auto maliRate = double(ptr->maliciousPrefix.size()) / double(ptr->suspectPrefix.size());
+            auto maliRate = double(ptr->curMaliciousPrefix.size()) / double(ptr->suspectPrefix.size());
             // if(maliRate<0.9){
             //   ptr->tao = ptr->tao + maliRate;
             // }
@@ -252,15 +257,22 @@ void computePITWDCallback(Forwarder *ptr)
             //   ptr->tao = std::min(ptr->tao - maliRate, 1.5);
             // }
             if(maliRate==0){
-              ptr->tao=10;
+              ptr->tao=3;//如果太大，会导致下一周期攻击者不被判定为可疑
             }
             else{
-              ptr->tao = 1- log(maliRate)/log(1.3);
+              ptr->tao = 1- log(maliRate)/log(3);
             }
             NFD_LOG_DEBUG("mailiRate "<<maliRate);
             NFD_LOG_DEBUG("tao "<<ptr->tao);
           }
+          else{
+            NFD_LOG_DEBUG("suspectPrefix empty");
+            ptr->tao=1;
+            NFD_LOG_DEBUG("tao "<<ptr->tao);
+          }
         }
+        ptr->suspectPrefix.clear();
+        ptr->curMaliciousPrefix.clear();
         //计算总平均延迟(应该最后计算，使得判断恶意前缀时使用的是上一周期的DH)
         if(ptr->avgDelay.size()!=0){
           ptr->avgTotalDelay = ptr->avgTotalDelay / ptr->avgDelay.size();
@@ -529,8 +541,9 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         //tao[prefix]=1;//初始化波动状态
         numInterest[prefix]=0;//初始化numInterest
         rate[prefix]=0;
+        usePit[prefix]=0;//初始化usePit
         curPit[prefix]=0;//初始化curPit
-        unallocPitCapacity=pitTotalCapacity-allPrefix.size()*minAllocPit;//更新未分配空间
+        unallocPitCapacity=unallocPitCapacity-minAllocPit;//更新未分配空间
       }
       numInterest[prefix]+=1;
       if(edgeId.find(mynodeid)!=edgeId.end()){//边缘节点
@@ -548,6 +561,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           }
       }
       NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
+      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
       NFD_LOG_DEBUG("allocPit"<<allocPit[prefix]);
       NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
       NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
@@ -581,9 +595,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
           NFD_LOG_DEBUG("prefix pit capicity full, insert to unalloct");
           unallocName.insert(interest.getName().toUri());
+          usePit[prefix]++;
           curUnallocPit++;
           sendInterestTime[interest.getName().toUri()]=ns3::Simulator::Now();
           totalPit++;
+          NFD_LOG_DEBUG("totalPit:"<<totalPit);
         }
         else{
           NFD_LOG_DEBUG("prefix pit and unalloc all full, discard");
@@ -609,10 +625,12 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       }
       else{
       //插入前缀桶
+        usePit[prefix]++;
         curPit[prefix]+=1;
         //记录兴趣包发送时间(会被聚合请求覆盖)
         sendInterestTime[interest.getName().toUri()]=ns3::Simulator::Now();
         totalPit++;
+        NFD_LOG_DEBUG("totalPit:"<<totalPit);
       }
     }
   
@@ -815,8 +833,23 @@ Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
     //兴趣包的lifetime（PITtimeout)为2s时，首先触发的是用户RTO，发出新的相同兴趣，刷新PIT，所以基本上不会存在未被满足的PIT达到timeout，所以代码基本上没有运行到此处
     auto prefix = pitEntry->getName().getPrefix(1).toUri();
     NFD_LOG_DEBUG("prefix"<<prefix);
-    curPit[prefix]--;
-    delaySeries[prefix].push_back(PitTimeout);
+    if(prefix != "/localhost"){
+      usePit[prefix]-=1;
+      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
+      if(unallocName.find(pitEntry->getName().toUri())!=unallocName.end()){//如果name在unalloc中
+        unallocName.erase(pitEntry->getName().toUri());
+        curUnallocPit--;
+        NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
+      }
+      else{//如果name在前缀桶中
+        //curPit减1
+        curPit[prefix]-=1;
+        NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
+      }
+      totalPit--;
+      NFD_LOG_DEBUG("totalPit:"<<totalPit);
+      delaySeries[prefix].push_back(PitTimeout);
+    }
   }
 
   // Dead Nonce List insert if necessary
@@ -969,12 +1002,15 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
   NFD_LOG_DEBUG("prefix: "<<prefix);
   if(prefix != "/localhost"){
     totalPit--;
+    NFD_LOG_DEBUG("totalPit:"<<totalPit);
       if(numData.find(prefix)!=numData.end()){
         numData[prefix]++;
       }
       else{
         numData[prefix]=1;
       }
+      usePit[prefix]-=1;
+      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
       if(unallocName.find(data.getName().toUri())!=unallocName.end()){//如果name在unalloc中
         unallocName.erase(data.getName().toUri());
         curUnallocPit--;

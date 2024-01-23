@@ -177,16 +177,17 @@ public:
   int totalPit=0;//总占据pit
   std::queue<int> totalPitSeries;
   int avgTotalPit=0;
-  int minAllocPit=100;//每个前缀的pit初步上限
+  int minAllocPit=200;//每个前缀的pit初步上限
   int minAcceptRate=100;//每个前缀的兴趣包速率初步上限
   std::unordered_set<std::string> allPrefix;//经过的前缀
-  int pitTotalCapacity=1000;//总共Pit容量限制
-  int unallocPitCapacity=1000;//未分配pit容量
+  int pitTotalCapacity=1500;//总共Pit容量限制
+  int unallocPitCapacity=1500;//未分配pit容量
   int curUnallocPit=0;//未分配pit空间中的占据量
   std::unordered_set<std::string> unallocName;//未分配空间中占据的pit完整name
 
   std::map<std::string, std::queue<int>> pitSeries;//每个前缀的历史pit序列，滑动更新
-  std::map<std::string, int> curPit;//每个前缀的当前pit
+  std::map<std::string, int> usePit;//每个前缀桶中的占用pit
+  std::map<std::string, int> curPit;//每个前缀的pit
   std::map<std::string, int> avgPit;//每个前缀的平均pit
 
   std::map<std::string, int> allocPit;//每个前缀分配的pit容量
@@ -196,7 +197,7 @@ public:
   std::map<std::string, int> numInterest;//每个前缀在当前周期的兴趣包到达数目
 
   std::unordered_set<std::string> suspectPrefix;//速率超标的可疑前缀
-  //std::unordered_set<std::string> curMaliciousPrefix;//当前恶意前缀
+  std::unordered_set<std::string> curMaliciousPrefix;//当前恶意前缀
   std::unordered_set<std::string> maliciousPrefix;//恶意前缀
 
   int timePitSeries=0;
