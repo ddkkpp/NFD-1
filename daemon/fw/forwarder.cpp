@@ -484,7 +484,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         mynode = p2pNetDevice->GetNode();
         mynodeid = mynode->GetId();
         NFD_LOG_DEBUG("nodeid"<<mynodeid);
-    }
+    
 
     auto prefix=interest.getName().getPrefix(1).toUri();
     NFD_LOG_DEBUG("prefix: "<<prefix);
@@ -633,7 +633,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("totalPit:"<<totalPit);
       }
     }
-  
+    }
 
 
 
