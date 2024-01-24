@@ -214,9 +214,10 @@ public:
   std::map<std::string, int> numData;//每个前缀到来的数据包数目
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
-  std::map<FaceId, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
-  std::map<FaceId, int> numDatatoFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
-  std::map<FaceId, int> numExpiredInterestofFace;//每个端口在当前周期发送的过期兴趣包数目
+  std::map<FaceEndpoint, int, FaceEndpointCompare> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
+  std::map<FaceEndpoint, int, FaceEndpointCompare> numDatatoFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
+  std::map<FaceEndpoint, int, FaceEndpointCompare> numExpiredInterestofFace;//每个端口在当前周期发送的过期兴趣包数目
+  
   std::map<FaceId, double> rateOfFace;//每个前缀的兴趣包到达速率
   double avgRateOfAllFace=0;
   std::map<std::pair<FaceId, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
@@ -229,7 +230,7 @@ public:
   std::set<FaceId> suspectFace;//可疑端口
   std::set<FaceId> maliciousFace;//恶意端口
   
-  std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
+  std::map<std::string, std::set<FaceEndpoint, FaceEndpointCompare>> prefixFace;//每个前缀兴趣包的入端口
   int triggerPCIPRate=200;//CP触发PCIP的速率阈值
   int CPLimitRate=200;//CP的PCIP的速率限制
   std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//向每个端口发送每个前缀的兴趣包的速率限制
