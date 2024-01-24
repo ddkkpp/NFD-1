@@ -472,7 +472,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
               PCIP->setName(*nameWithSequence);
               NFD_LOG_DEBUG("PCIP is"<<PCIP->getName());
               it->face.sendInterest(*PCIP);
-            }
+            
           }
           //消费者边缘节点收到PCIP后，会设置suspectPrefix
           if(edgeId.find(mynodeid)!=edgeId.end()){
@@ -480,6 +480,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           }
           return;
         }
+
+        
 
         if(edgeId.find(mynodeid)!=edgeId.end()){//消费者边缘节点记录收到兴趣包数量
           if(numInterestOfFace.find(ingress.face.getId())!=numInterestOfFace.end()){
