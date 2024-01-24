@@ -481,6 +481,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           return;
         }
 
+        if(edgeId.find(mynodeid)!=edgeId.end()){//消费者边缘节点记录收到兴趣包数量
+          if(numInterestOfFace.find(ingress.face.getId())!=numInterestOfFace.end()){
+            numInterestOfFace[ingress.face.getId()]++;
+          }
+          else{
+            numInterestOfFace[ingress.face.getId()]=1;
+          }
+        }
+
         if(mynodeid==BTNkId){
             //丢弃恶意端口的兴趣包
             if(maliciousFace.find(ingress.face.getId())!=maliciousFace.end()){
