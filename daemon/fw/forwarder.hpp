@@ -215,6 +215,8 @@ public:
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
   std::map<FaceId, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
+  std::map<FaceId, int> numDatatoFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
+  std::map<FaceId, int> numExpiredInterestofFace;//每个端口在当前周期发送的过期兴趣包数目
   std::map<FaceId, double> rateOfFace;//每个前缀的兴趣包到达速率
   double avgRateOfAllFace=0;
   std::map<std::pair<FaceId, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例

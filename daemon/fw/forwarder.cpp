@@ -733,23 +733,12 @@ Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
                 << (pitEntry->isSatisfied ? " satisfied" : " unsatisfied"));
   //消费者节点会触发
   if (!pitEntry->isSatisfied) {
-    beforeExpirePendingInterest(*pitEntry);
     //兴趣包的lifetime（PITtimeout)为2s时，首先触发的是用户RTO，发出新的相同兴趣，刷新PIT，所以基本上不会存在未被满足的PIT达到timeout，所以代码基本上没有运行到此处
     auto prefix = pitEntry->getName().getPrefix(1).toUri();
     NFD_LOG_DEBUG("prefix"<<prefix);
     if(prefix != "/localhost"){
       usePit[prefix]-=1;
       NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
-      if(unallocName.find(pitEntry->getName().toUri())!=unallocName.end()){//如果name在unalloc中
-        unallocName.erase(pitEntry->getName().toUri());
-        curUnallocPit--;
-        NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-      }
-      else{//如果name在前缀桶中
-        //curPit减1
-        curPit[prefix]-=1;
-        NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
-      }
       totalPit--;
       NFD_LOG_DEBUG("totalPit:"<<totalPit);
       delaySeries[prefix].push_back(PitTimeout);
@@ -912,6 +901,12 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
     }
     else{
       numData[prefix]=1;
+    }
+    if(numDatatoFace.find(egress.getId())!=numData.end()){
+      numDatatoFace[egress.getId()]++;
+    }
+    else{
+      numDatatoFace[egress.getId()]=1;
     }
     usePit[prefix]-=1;
     NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
