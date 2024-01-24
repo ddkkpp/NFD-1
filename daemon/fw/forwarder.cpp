@@ -433,8 +433,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
         mynode = p2pNetDevice->GetNode();
         mynodeid = mynode->GetId();
-        NFD_LOG_DEBUG("nodeid"<<mynodeid);
-    
+        NFD_LOG_DEBUG("nodeid"<<mynodeid);    
 
         numInterest[prefix]+=1;
         auto prefix=interest.getName().getPrefix(1).toUri();
@@ -742,6 +741,15 @@ Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
       totalPit--;
       NFD_LOG_DEBUG("totalPit:"<<totalPit);
       delaySeries[prefix].push_back(PitTimeout);
+      //更新端口过期兴趣包的数量
+      for (const pit::InRecord& inRecord : pitEntry->getInRecords()) {
+        if(numExpiredInterestofFace.find(&inRecord.getFace().getId())!=numExpiredInterestofFace.end()){
+          numExpiredInterestofFace[&inRecord.getFace().getId()]+=1;
+        }
+        else{
+          numExpiredInterestofFace[&inRecord.getFace().getId()]=1;
+        }
+      }
     }
   }
 
