@@ -204,6 +204,7 @@ public:
   int timeDelaySeries=0;
   int count=0;
   int countSmallPeriod=0;
+  int countCPPeriod=0;
   ns3::Time watchdogPeriod = ns3::MilliSeconds(50);//单位毫秒
 
   std::map<std::string, ns3::Time> sendInterestTime;//每个兴趣包（完整名字，非前缀）的到达时刻
@@ -226,7 +227,10 @@ public:
   std::set<FaceId> suspectFace;//可疑端口
   std::set<FaceId> maliciousFace;//恶意端口
   
-  std::map<std::string, FaceEndpoint> prefixFace;//每个前缀兴趣包的入端口
+  std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
+  int triggerPCIPRate=200;//CP触发PCIP的速率阈值
+  int CPLimitRate=200;//CP的PCIP的速率限制
+  std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//向每个端口发送每个前缀的兴趣包的速率限制
 
   int mynodeid=0;
   std::map<std::string, int> noData;
