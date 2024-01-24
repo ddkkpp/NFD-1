@@ -436,6 +436,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("nodeid"<<mynodeid);
     
 
+        numInterest[prefix]+=1;
         auto prefix=interest.getName().getPrefix(1).toUri();
         NFD_LOG_DEBUG("prefix: "<<prefix);
         //记录每个前缀的入端口
@@ -906,47 +907,37 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
   if(prefix != "/localhost"){
     totalPit--;
     NFD_LOG_DEBUG("totalPit:"<<totalPit);
-      if(numData.find(prefix)!=numData.end()){
-        numData[prefix]++;
-      }
-      else{
-        numData[prefix]=1;
-      }
-      usePit[prefix]-=1;
-      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
-      if(unallocName.find(data.getName().toUri())!=unallocName.end()){//如果name在unalloc中
-        unallocName.erase(data.getName().toUri());
-        curUnallocPit--;
-        NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-      }
-      else{//如果name在前缀桶中
-        //curPit减1
-        curPit[prefix]-=1;
-        NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
-      }
-      //delay
-      //NFD_LOG_DEBUG("now: "<<ns3::Simulator::Now() <<"sendTime "<< sendInterestTime[data.getName().toUri()]);
-      auto del=ns3::Simulator::Now() - sendInterestTime[data.getName().toUri()];
-      NFD_LOG_DEBUG("delay:"<<del);
-      NFD_LOG_DEBUG("egress.getId()"<<egress.getId());
-      if(delaySeriesOfFace.find(egress.getId())!=delaySeriesOfFace.end()){
-          delaySeriesOfFace[egress.getId()].push_back(del);
-      }
-      else{
-          delaySeriesOfFace[egress.getId()] = std::vector<ns3::Time>();
-          delaySeriesOfFace[egress.getId()].push_back(del);
-      }
-      // for (auto it = delaySeriesOfFace[egress.getId()].begin(); it != delaySeriesOfFace[egress.getId()].end(); ++it) {
-      //   std::cout << "Key: " << *it << std::endl;
-      // }
-      if(delaySeries.find(prefix)!=delaySeries.end()){
-          delaySeries[prefix].push_back(del);
-      }
-      else{
-          delaySeries[prefix] = std::vector<ns3::Time>();
-          delaySeries[prefix].push_back(del);
-      }
-      
+    if(numData.find(prefix)!=numData.end()){
+      numData[prefix]++;
+    }
+    else{
+      numData[prefix]=1;
+    }
+    usePit[prefix]-=1;
+    NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
+    //delay
+    //NFD_LOG_DEBUG("now: "<<ns3::Simulator::Now() <<"sendTime "<< sendInterestTime[data.getName().toUri()]);
+    auto del=ns3::Simulator::Now() - sendInterestTime[data.getName().toUri()];
+    NFD_LOG_DEBUG("delay:"<<del);
+    NFD_LOG_DEBUG("egress.getId()"<<egress.getId());
+    if(delaySeriesOfFace.find(egress.getId())!=delaySeriesOfFace.end()){
+        delaySeriesOfFace[egress.getId()].push_back(del);
+    }
+    else{
+        delaySeriesOfFace[egress.getId()] = std::vector<ns3::Time>();
+        delaySeriesOfFace[egress.getId()].push_back(del);
+    }
+    // for (auto it = delaySeriesOfFace[egress.getId()].begin(); it != delaySeriesOfFace[egress.getId()].end(); ++it) {
+    //   std::cout << "Key: " << *it << std::endl;
+    // }
+    if(delaySeries.find(prefix)!=delaySeries.end()){
+        delaySeries[prefix].push_back(del);
+    }
+    else{
+        delaySeries[prefix] = std::vector<ns3::Time>();
+        delaySeries[prefix].push_back(del);
+    }
+    
   }
 
  
