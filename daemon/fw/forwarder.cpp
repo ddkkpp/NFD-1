@@ -54,27 +54,29 @@ void computePITWDCallback(Forwarder *ptr)
     // if(ptr->usePit.empty()){
     //   NFD_LOG_DEBUG("usePit is empty");
     // }
-    for(const auto& pair: ptr->usePit){
-        if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每50ms采样pit到pitSeries
-            if(ptr->maliciousPrefix.find(pair.first)!=ptr->maliciousPrefix.end()){
-              //NFD_LOG_DEBUG("prefix: "<<pair.first<<" pit: "<<pair.second);
-            }
-            ptr->pitSeries[pair.first].push(pair.second);
-            if(ptr->pitSeries[pair.first].size()>10){//pitSeries保存10个历史值
-                ptr->pitSeries[pair.first].pop();
-            }
-        }
-        else{
-            ptr->pitSeries[pair.first] = std::queue<int>();
-            ptr->pitSeries[pair.first].push(0);
-        }
+    if(ptr->mynodeid==ptr->BTNkId){
+      for(const auto& pair: ptr->usePit){
+          if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每5ms采样pit到pitSeries
+              if(ptr->maliciousPrefix.find(pair.first)!=ptr->maliciousPrefix.end()){
+                //NFD_LOG_DEBUG("prefix: "<<pair.first<<" pit: "<<pair.second);
+              }
+              ptr->pitSeries[pair.first].push(pair.second);
+              if(ptr->pitSeries[pair.first].size()>10){//pitSeries保存10个历史值
+                  ptr->pitSeries[pair.first].pop();
+              }
+          }
+          else{
+              ptr->pitSeries[pair.first] = std::queue<int>();
+              ptr->pitSeries[pair.first].push(0);
+          }
+      }
     }
     // ptr->totalPitSeries.push(ptr->totalPit);
     // if(ptr->totalPitSeries.size()>10){//pitSeries保存10个历史值
     //     ptr->totalPitSeries.pop();
     // }
 
-    if(ptr->timeDelaySeries==10){//每500ms求delay平均值
+    if(ptr->timeDelaySeries==10){//每100ms求delay平均值
     //     std::queue<int> tempTotalPit=ptr->totalPitSeries;
     //     auto sum3=0;
     //     while (!tempTotalPit.empty()) {
@@ -82,7 +84,7 @@ void computePITWDCallback(Forwarder *ptr)
     //         tempTotalPit.pop();  // 移除队首元素
     //     }
     //     ptr->avgTotalPit = sum3 / ptr->totalPitSeries.size();
-
+      if(ptr->mynodeid==ptr->BTNkId){
         ptr->avgTotalDelay=ns3::NanoSeconds(0);
         for(const auto& pair: ptr->pitSeries){//不用delaySeries而用pitSeries，因为2s后才有数据返回，才有delaySeries
             NFD_LOG_DEBUG("prefix: "<<pair.first);
@@ -153,10 +155,12 @@ void computePITWDCallback(Forwarder *ptr)
                 ptr->avgTotalDelay = ptr->avgTotalDelay+sum2;
             } 
         }
-        ptr->timeDelaySeries=0; 
+      }
+      ptr->timeDelaySeries=0; 
     }
 
-    if(ptr->timePitSeries==10){//每500ms求一次pit平均值
+    if(ptr->timePitSeries==10){//每100ms求一次pit平均值
+      if(ptr->mynodeid==ptr->BTNkId){
         //ptr->curMaliciousPrefix.clear();
         //ptr->curSuspectPrefix.clear();
         ptr->avgTotalPit=0;
@@ -281,14 +285,14 @@ void computePITWDCallback(Forwarder *ptr)
           ptr->DH = ns3::Min(ptr->m * ptr->avgTotalDelay, ptr->PitTimeout*4/5);
           NFD_LOG_DEBUG("DH "<<ptr->DH);
         }
-
-        ptr->timePitSeries=0;
+      }
+      ptr->timePitSeries=0;
     }
 
 
   NFD_LOG_DEBUG("ptr->mynodeid "<<ptr->mynodeid<<(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()));
   //先判断是否到达周期，再判断是否是边缘，因为pcon等算法在1s后才发兴趣包，所以边缘在1s后才收到兴趣包才确定自己的nodeid,这个时候如果后判断是否到达周期，则会使得1.05s时countSmallPeriod=21，无法进入
-    if(ptr->countSmallPeriod==10){//每500ms小周期统计一次face的delay平均值
+    if(ptr->countSmallPeriod==10){//每100ms小周期统计一次face的delay平均值
       if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
         for(const auto& pair: ptr->delaySeriesOfFace){
             NFD_LOG_DEBUG(pair.first);
@@ -325,7 +329,7 @@ void computePITWDCallback(Forwarder *ptr)
       ptr->countSmallPeriod=0; 
     }
 
-  if(ptr->count==100){//每5s大周期统计一次face的delay平均值、rate平均值、恶意请求比例
+  if(ptr->count==100){//每1s大周期统计一次face的delay平均值、rate平均值、恶意请求比例
     if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
       for(const auto& pair: ptr->numInterestOfFace){
         NFD_LOG_DEBUG(pair.first);
@@ -439,7 +443,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
   
-   SetWatchDog(ns3::MilliSeconds(50));
+   SetWatchDog(ns3::MilliSeconds(10));
   //SetWatchDog(50);
 }
 
@@ -471,7 +475,7 @@ void
 Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingress)
 {
   // receive Interest
-  NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
+  //NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
             
     nfd::face::Transport* mytransport = ingress.face.getTransport();
     ns3::Ptr<ns3::Node> mynode =nullptr;
@@ -483,11 +487,12 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
         mynode = p2pNetDevice->GetNode();
         mynodeid = mynode->GetId();
-        NFD_LOG_DEBUG("nodeid"<<mynodeid);
+        //NFD_LOG_DEBUG("nodeid"<<mynodeid);
     
 
     auto prefix=interest.getName().getPrefix(1).toUri();
-    NFD_LOG_DEBUG("prefix: "<<prefix);
+    //NFD_LOG_DEBUG("prefix: "<<prefix);
+
     // if(mynodeid==BTNkId){
     //     //丢弃恶意端口的兴趣包
     //     if(maliciousFace.find(ingress.face.getId())!=maliciousFace.end()){
@@ -560,11 +565,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             numInterestOfFacePrefix[std::make_pair(ingress.face.getId(), prefix)] = 1;
           }
       }
-      NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
-      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
-      NFD_LOG_DEBUG("allocPit"<<allocPit[prefix]);
-      NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-      NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
+      // NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
+      // NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
+      // NFD_LOG_DEBUG("allocPit"<<allocPit[prefix]);
+      // NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
+      // NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
       if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
         NFD_LOG_DEBUG("total pit capacity full, discard");
         if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
@@ -591,15 +596,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       // }
       if((curPit[prefix]>allocPit[prefix])&&(mynodeid==BTNkId)){
         if(curUnallocPit<unallocPitCapacity){//插入未分配空间
-          NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-          NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
-          NFD_LOG_DEBUG("prefix pit capicity full, insert to unalloct");
+          // NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
+          // NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
+          // NFD_LOG_DEBUG("prefix pit capicity full, insert to unalloct");
           unallocName.insert(interest.getName().toUri());
           usePit[prefix]++;
           curUnallocPit++;
           sendInterestTime[interest.getName().toUri()]=ns3::Simulator::Now();
           totalPit++;
-          NFD_LOG_DEBUG("totalPit:"<<totalPit);
+          //NFD_LOG_DEBUG("totalPit:"<<totalPit);
         }
         else{
           NFD_LOG_DEBUG("prefix pit and unalloc all full, discard");
@@ -732,7 +737,7 @@ void
 Forwarder::onContentStoreMiss(const Interest& interest, const FaceEndpoint& ingress,
                               const shared_ptr<pit::Entry>& pitEntry)
 {
-  NFD_LOG_DEBUG("onContentStoreMiss interest=" << interest.getName());
+  //NFD_LOG_DEBUG("onContentStoreMiss interest=" << interest.getName());
   ++m_counters.nCsMisses;
   afterCsMiss(interest);
 
@@ -751,7 +756,7 @@ Forwarder::onContentStoreMiss(const Interest& interest, const FaceEndpoint& ingr
                                        });
   auto lastExpiryFromNow = lastExpiring->getExpiry() - time::steady_clock::now();
   this->setExpiryTimer(pitEntry, time::duration_cast<time::milliseconds>(lastExpiryFromNow));
-  NFD_LOG_DEBUG("lastExpiryFromNow=" << lastExpiryFromNow);
+  //NFD_LOG_DEBUG("lastExpiryFromNow=" << lastExpiryFromNow);
 
   // has NextHopFaceId?
   auto nextHopTag = interest.getTag<lp::NextHopFaceIdTag>();
@@ -810,7 +815,7 @@ Forwarder::onOutgoingInterest(const Interest& interest, Face& egress,
     return nullptr;
   }
 
-  NFD_LOG_DEBUG("onOutgoingInterest out=" << egress.getId() << " interest=" << pitEntry->getName());
+  //NFD_LOG_DEBUG("onOutgoingInterest out=" << egress.getId() << " interest=" << pitEntry->getName());
 
   // insert out-record
   auto it = pitEntry->insertOrUpdateOutRecord(egress, interest);
@@ -825,28 +830,27 @@ Forwarder::onOutgoingInterest(const Interest& interest, Face& egress,
 void
 Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
 {
-  NFD_LOG_DEBUG("onInterestFinalize interest=" << pitEntry->getName()
-                << (pitEntry->isSatisfied ? " satisfied" : " unsatisfied"));
+  //NFD_LOG_DEBUG("onInterestFinalize interest=" << pitEntry->getName() << (pitEntry->isSatisfied ? " satisfied" : " unsatisfied"));
   //消费者节点会触发
   if (!pitEntry->isSatisfied) {
     //兴趣包的lifetime（PITtimeout)为2s时，首先触发的是用户RTO，发出新的相同兴趣，刷新PIT，所以基本上不会存在未被满足的PIT达到timeout，所以代码基本上没有运行到此处
     auto prefix = pitEntry->getName().getPrefix(1).toUri();
-    NFD_LOG_DEBUG("prefix"<<prefix);
+    //NFD_LOG_DEBUG("prefix"<<prefix);
     if(prefix != "/localhost"){
       usePit[prefix]-=1;
-      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
+      //NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
       if(unallocName.find(pitEntry->getName().toUri())!=unallocName.end()){//如果name在unalloc中
         unallocName.erase(pitEntry->getName().toUri());
         curUnallocPit--;
-        NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
+        //NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
       }
       else{//如果name在前缀桶中
         //curPit减1
         curPit[prefix]-=1;
-        NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
+        //NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
       }
       totalPit--;
-      NFD_LOG_DEBUG("totalPit:"<<totalPit);
+      //NFD_LOG_DEBUG("totalPit:"<<totalPit);
       delaySeries[prefix].push_back(PitTimeout);
     }
   }
@@ -998,50 +1002,50 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
 
     //放在outgoingdata里面，因为contentHit的data不会经过incomingData
   auto prefix=data.getName().getPrefix(1).toUri();
-  NFD_LOG_DEBUG("prefix: "<<prefix);
+  //NFD_LOG_DEBUG("prefix: "<<prefix);
   if(prefix != "/localhost"){
     totalPit--;
+    usePit[prefix]-=1;
     NFD_LOG_DEBUG("totalPit:"<<totalPit);
-      if(numData.find(prefix)!=numData.end()){
-        numData[prefix]++;
-      }
-      else{
-        numData[prefix]=1;
-      }
-      usePit[prefix]-=1;
-      NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
-      if(unallocName.find(data.getName().toUri())!=unallocName.end()){//如果name在unalloc中
-        unallocName.erase(data.getName().toUri());
-        curUnallocPit--;
-        NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
-      }
-      else{//如果name在前缀桶中
-        //curPit减1
-        curPit[prefix]-=1;
-        NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
-      }
-      //delay
-      //NFD_LOG_DEBUG("now: "<<ns3::Simulator::Now() <<"sendTime "<< sendInterestTime[data.getName().toUri()]);
-      auto del=ns3::Simulator::Now() - sendInterestTime[data.getName().toUri()];
-      NFD_LOG_DEBUG("delay:"<<del);
-      NFD_LOG_DEBUG("egress.getId()"<<egress.getId());
-      if(delaySeriesOfFace.find(egress.getId())!=delaySeriesOfFace.end()){
-          delaySeriesOfFace[egress.getId()].push_back(del);
-      }
-      else{
-          delaySeriesOfFace[egress.getId()] = std::vector<ns3::Time>();
-          delaySeriesOfFace[egress.getId()].push_back(del);
-      }
-      // for (auto it = delaySeriesOfFace[egress.getId()].begin(); it != delaySeriesOfFace[egress.getId()].end(); ++it) {
-      //   std::cout << "Key: " << *it << std::endl;
-      // }
-      if(delaySeries.find(prefix)!=delaySeries.end()){
-          delaySeries[prefix].push_back(del);
-      }
-      else{
-          delaySeries[prefix] = std::vector<ns3::Time>();
-          delaySeries[prefix].push_back(del);
-      }
+    if(numData.find(prefix)!=numData.end()){
+      numData[prefix]++;
+    }
+    else{
+      numData[prefix]=1;
+    }
+    //NFD_LOG_DEBUG("usePit"<<usePit[prefix]);
+    if(unallocName.find(data.getName().toUri())!=unallocName.end()){//如果name在unalloc中
+      unallocName.erase(data.getName().toUri());
+      curUnallocPit--;
+      //NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
+    }
+    else{//如果name在前缀桶中
+      //curPit减1
+      curPit[prefix]-=1;
+      //NFD_LOG_DEBUG("curPit"<<curPit[prefix]);
+    }
+    //delay
+    //NFD_LOG_DEBUG("now: "<<ns3::Simulator::Now() <<"sendTime "<< sendInterestTime[data.getName().toUri()]);
+    auto del=ns3::Simulator::Now() - sendInterestTime[data.getName().toUri()];
+    // NFD_LOG_DEBUG("delay:"<<del);
+    // NFD_LOG_DEBUG("egress.getId()"<<egress.getId());
+    if(delaySeriesOfFace.find(egress.getId())!=delaySeriesOfFace.end()){
+        delaySeriesOfFace[egress.getId()].push_back(del);
+    }
+    else{
+        delaySeriesOfFace[egress.getId()] = std::vector<ns3::Time>();
+        delaySeriesOfFace[egress.getId()].push_back(del);
+    }
+    // for (auto it = delaySeriesOfFace[egress.getId()].begin(); it != delaySeriesOfFace[egress.getId()].end(); ++it) {
+    //   std::cout << "Key: " << *it << std::endl;
+    // }
+    if(delaySeries.find(prefix)!=delaySeries.end()){
+        delaySeries[prefix].push_back(del);
+    }
+    else{
+        delaySeries[prefix] = std::vector<ns3::Time>();
+        delaySeries[prefix].push_back(del);
+    }
       
   }
 
