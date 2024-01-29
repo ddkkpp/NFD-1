@@ -164,32 +164,32 @@ void computePITWDCallback(Forwarder *ptr)
         //ptr->curMaliciousPrefix.clear();
         //ptr->curSuspectPrefix.clear();
         ptr->avgTotalPit=0;
-        for(const auto& pair: ptr->pitSeries){
-            NFD_LOG_DEBUG("numData "<<ptr->numData[pair.first]);
-            if(ptr->numData[pair.first]==0){
-              if(ptr->noData.find(pair.first)!=ptr->noData.end()){
-                ptr->noData[pair.first]++;
-              }
-              else{
-                ptr->noData[pair.first]=1;
-              }
-            }
-            else{
-              ptr->noData[pair.first]=0;
-            }
-            NFD_LOG_DEBUG("noData "<<ptr->noData[pair.first]);
-            if(ptr->noData[pair.first]==20){//2s没有数据到来，则清空pit
-              NFD_LOG_DEBUG("curPit "<<ptr->curPit[pair.first]);
-              NFD_LOG_DEBUG("usePit "<<ptr->usePit[pair.first]);
-              ptr->totalPit=ptr->totalPit - ptr->curPit[pair.first] - ptr->curUnallocPit+7;
-              ptr->curPit[pair.first]=0;
-              ptr->usePit[pair.first]=0;
-              ptr->curUnallocPit=0;
-              while(!ptr->pitSeries[pair.first].empty()){
-                    ptr->pitSeries[pair.first].pop();
-              }
-              //ptr->noData[pair.first]=0;
-            }
+        // for(const auto& pair: ptr->pitSeries){
+        //     NFD_LOG_DEBUG("numData "<<ptr->numData[pair.first]);
+        //     if(ptr->numData[pair.first]==0){
+        //       if(ptr->noData.find(pair.first)!=ptr->noData.end()){
+        //         ptr->noData[pair.first]++;
+        //       }
+        //       else{
+        //         ptr->noData[pair.first]=1;
+        //       }
+        //     }
+        //     else{
+        //       ptr->noData[pair.first]=0;
+        //     }
+        //     NFD_LOG_DEBUG("noData "<<ptr->noData[pair.first]);
+        //     if(ptr->noData[pair.first]==20){//2s没有数据到来，则清空pit
+        //       NFD_LOG_DEBUG("curPit "<<ptr->curPit[pair.first]);
+        //       NFD_LOG_DEBUG("usePit "<<ptr->usePit[pair.first]);
+        //       ptr->totalPit=ptr->totalPit - ptr->curPit[pair.first] - ptr->curUnallocPit+7;
+        //       ptr->curPit[pair.first]=0;
+        //       ptr->usePit[pair.first]=0;
+        //       ptr->curUnallocPit=0;
+        //       while(!ptr->pitSeries[pair.first].empty()){
+        //             ptr->pitSeries[pair.first].pop();
+        //       }
+        //       //ptr->noData[pair.first]=0;
+        //     }
             NFD_LOG_DEBUG("prefix: "<<pair.first);
             float sum = 0;
             //NFD_LOG_DEBUG("输出pitSeries: " );
