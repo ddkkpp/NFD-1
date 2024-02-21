@@ -214,26 +214,31 @@ public:
   std::map<std::string, int> numData;//每个前缀到来的数据包数目
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
-  std::map<FaceEndpoint, int, FaceEndpointCompare> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
-  std::map<FaceEndpoint, int, FaceEndpointCompare> numDatatoFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
-  std::map<FaceEndpoint, int, FaceEndpointCompare> numExpiredInterestofFace;//每个端口在当前周期发送的过期兴趣包数目
+  std::map<FaceEndpoint, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
+  std::map<FaceEndpoint, int> numDataOfFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
+  std::map<FaceEndpoint, int> numExpiredInterestOfFace;//每个端口在当前周期发送的过期兴趣包数目
   
   std::map<FaceId, double> rateOfFace;//每个前缀的兴趣包到达速率
   double avgRateOfAllFace=0;
-  std::map<std::pair<FaceId, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
+  std::map<std::pair<FaceEndpoint, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
   std::map<FaceId, double> malirateOfFace;//每个端口的恶意前缀兴趣包占总兴趣包比例
   std::map<FaceId, std::vector<ns3::Time>> delaySeriesOfFace;//每个端口的历史delay序列，每500ms计算小周期平均delay
   std::map<FaceId, std::vector<ns3::Time>> avgDelaySeriesOfFace;//每个端口的小周期（500ms)平均delay序列，用以计算大周期（5s）平均delay
   std::map<FaceId, int> numDropInterestOfFace;//每个端口未响应的兴趣包数目
   std::map<FaceId, ns3::Time> avgDelayOfFace;//每个端口的平均delay
   ns3::Time avgDelayOfAllFace=ns3::MilliSeconds(0);
-  std::set<FaceId> suspectFace;//可疑端口
-  std::set<FaceId> maliciousFace;//恶意端口
+  std::set<FaceEndpoint> suspectFace1;//第一原因可疑端口
+  std::set<FaceEndpoint> suspectFace2;//第二原因可疑端口
+  std::set<FaceEndpoint> maliciousFace;//恶意端口
   
-  std::map<std::string, std::set<FaceEndpoint, FaceEndpointCompare>> prefixFace;//每个前缀兴趣包的入端口
+  std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
   int triggerPCIPRate=200;//CP触发PCIP的速率阈值
   int CPLimitRate=200;//CP的PCIP的速率限制
-  std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//向每个端口发送每个前缀的兴趣包的速率限制
+  int ExpiredInterestLimit=100;//每个端口的过期兴趣包数目限制
+  double ISRThreshold=0.5;//每个端口的ISR限制
+  std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制
+  std::map<FaceEndpoint,double> ISR;//每个端口的ISR
+  //std::map<std::pair<FaceEndpoint,std::string>, int> numInterestOfFacePrefix;//每个端口发送每个前缀的兴趣包的数量
 
   int mynodeid=0;
   std::map<std::string, int> noData;

@@ -53,11 +53,16 @@ operator<<(std::ostream& os, const FaceEndpoint& fe)
   return os << '(' << fe.face.getId() << ',' << fe.endpoint << ')';
 }
 
-struct FaceEndpointCompare {
-    bool operator() (const FaceEndpoint& lhs, const FaceEndpoint& rhs) const {
-        return lhs.face.getId() < rhs.face.getId();  // 比较规则
-    }
-};
+inline bool 
+operator<(const FaceEndpoint& lhs, const FaceEndpoint& rhs) {
+    // 提供比较规则，例如：
+    return lhs.face.getId() < rhs.face.getId();
+}
+// struct FaceEndpointCompare {
+//     bool operator() (const FaceEndpoint& lhs, const FaceEndpoint& rhs) const {
+//         return lhs.face.getId() < rhs.face.getId();  // 比较规则
+//     }
+// };
 
 } // namespace nfd
 
