@@ -222,6 +222,8 @@ void computePITWDCallback(Forwarder *ptr)
       for(const auto& pair: ptr->numInterestOfFace){
         NFD_LOG_DEBUG(pair.first);
         //ISR
+        NFD_LOG_DEBUG("numInterestOfFace "<<pair.first<<" "<<ptr->numInterestOfFace[pair.first]);
+        NFD_LOG_DEBUG("numDataOfFace "<<pair.first<<" "<<ptr->numDataOfFace[pair.first]);
         if(ptr->numInterestOfFace[pair.first]!=0){
           if(ptr->numDataOfFace.find(pair.first)!=ptr->numDataOfFace.end()){
             ptr->ISR[pair.first] = double(ptr->numDataOfFace[pair.first]) / double(ptr->numInterestOfFace[pair.first]);
@@ -253,6 +255,7 @@ void computePITWDCallback(Forwarder *ptr)
         }
         ptr->numInterestOfFace[pair.first]=0;
         ptr->numDataOfFace[pair.first]=0;
+        ptr->numExpiredInterestOfFace[pair.first]=0;
       } 
       ptr->count=0;
     }
@@ -350,7 +353,14 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
         ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
         ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
-        ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
+        //上游传过来的PCIP，取第0个设备为本节点
+        ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice;
+        if(interest.getName().get(1).toUri() == "PCIP"){
+           p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(0));
+        }
+        else{
+           p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
+        }
         mynode = p2pNetDevice->GetNode();
         mynodeid = mynode->GetId();
         NFD_LOG_DEBUG("nodeid"<<mynodeid);    
@@ -377,30 +387,56 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         else{
           numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]=1;
         }
+        //消费者边缘节点记录收到兴趣包数量
+        if(edgeId.find(mynodeid)!=edgeId.end()){
+          if(numInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numInterestOfFace.end()){
+            numInterestOfFace[const_cast<FaceEndpoint&>(ingress)]++;
+          }
+          else{
+            numInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+          }
+        }
+        //pit总容量控制
+        NFD_LOG_DEBUG("totalPit "<<totalPit);
+        if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
+          NFD_LOG_DEBUG("total pit capacity full, discard");
+            //增加过期兴趣包数量
+            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            }
+            else{
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            }
+            return;
+        }
+
         //速率控制
         if(interestSendingRateOfFacePrefix.find(std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)) != interestSendingRateOfFacePrefix.end()){
+          NFD_LOG_DEBUG("interestSendingRateOfFacePrefix "<<interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]);
           auto shouldnum =interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] * double(watchdogPeriod.GetMilliSeconds())*10/1000;
           NFD_LOG_DEBUG("shouldnum "<<shouldnum);
           if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
             NFD_LOG_DEBUG("rate exceed, discard");
             //增加过期兴趣包数量
-            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress), 0))!=numExpiredInterestOfFace.end()){
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress), 0]+=1;
+            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
             }
             else{
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress), 0]=1;
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
             }
             return;
           }
         }
         
         //记录每个前缀的入端口
-        if(prefixFace.find(prefix)!=prefixFace.end()){
-          prefixFace[prefix].insert(const_cast<FaceEndpoint&>(ingress));
-        }
-        else{
-          prefixFace[prefix]=std::set<FaceEndpoint>();
-          prefixFace[prefix].insert(const_cast<FaceEndpoint&>(ingress));
+        if(interest.getName().get(1).toUri() != "PCIP"){
+          if(prefixFace.find(prefix)!=prefixFace.end()){
+            prefixFace[prefix].insert(const_cast<FaceEndpoint&>(ingress));
+          }
+          else{
+            prefixFace[prefix]=std::set<FaceEndpoint>();
+            prefixFace[prefix].insert(const_cast<FaceEndpoint&>(ingress));
+          }
         }
 
         //收到并处理PCIP
@@ -409,13 +445,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           int rateLimit = interest.getName().get(2).toSequenceNumber();
           NFD_LOG_DEBUG("rateLimit "<<rateLimit);
           //置ratelimit
-          if(interestSendingRateOfFacePrefix.find(std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix))!=interestSendingRateOfFacePrefix.end()){
-            if(interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]>rateLimit){
-              interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]=rateLimit;
+          for(auto it = prefixFace[prefix].begin(); it != prefixFace[prefix].end(); ++it){
+            if(interestSendingRateOfFacePrefix.find(std::make_pair(*it, prefix))!=interestSendingRateOfFacePrefix.end()){
+              if(interestSendingRateOfFacePrefix[std::make_pair(*it, prefix)]>rateLimit){
+                interestSendingRateOfFacePrefix[std::make_pair(*it, prefix)]=rateLimit;
+              }
             }
-          }
-          else{
-            interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]=rateLimit;
+            else{
+              interestSendingRateOfFacePrefix[std::make_pair(*it, prefix)]=rateLimit;
+            }
           }
           //发送PCIP
           for(auto it = prefixFace[prefix].begin(); it != prefixFace[prefix].end(); ++it){
@@ -443,14 +481,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           return;
         }
 
-        if(edgeId.find(mynodeid)!=edgeId.end()){//消费者边缘节点记录收到兴趣包数量
-          if(numInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numInterestOfFace.end()){
-            numInterestOfFace[const_cast<FaceEndpoint&>(ingress)]++;
-          }
-          else{
-            numInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
-          }
-        }
     }
     
 

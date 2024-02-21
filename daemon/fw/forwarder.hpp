@@ -235,7 +235,7 @@ public:
   int triggerPCIPRate=200;//CP触发PCIP的速率阈值
   int CPLimitRate=200;//CP的PCIP的速率限制
   int ExpiredInterestLimit=100;//每个端口的过期兴趣包数目限制
-  double ISRThreshold=0.5;//每个端口的ISR限制
+  double ISRThreshold=0.7;//每个端口的ISR限制
   std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制
   std::map<FaceEndpoint,double> ISR;//每个端口的ISR
   //std::map<std::pair<FaceEndpoint,std::string>, int> numInterestOfFacePrefix;//每个端口发送每个前缀的兴趣包的数量
