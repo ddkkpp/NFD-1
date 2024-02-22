@@ -261,8 +261,8 @@ void computePITWDCallback(Forwarder *ptr)
         ptr->numDataOfFace[pair.first]=0;
         ptr->numExpiredInterestOfFace[pair.first]=0;
       } 
-      ptr->count=0;
     }
+    ptr->count=0;
   }
     
 
@@ -395,37 +395,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             numInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
           }
         }
-        //pit总容量控制
-        NFD_LOG_DEBUG("totalPit "<<totalPit);
-        if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
-          NFD_LOG_DEBUG("total pit capacity full, discard");
-            //增加过期兴趣包数量
-            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
-            }
-            else{
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
-            }
-            return;
-        }
 
-        //速率控制
-        if(interestSendingRateOfFacePrefix.find(std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)) != interestSendingRateOfFacePrefix.end()){
-          NFD_LOG_DEBUG("interestSendingRateOfFacePrefix "<<interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]);
-          auto shouldnum =interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] * double(watchdogPeriod.GetMilliSeconds())/1000;
-          NFD_LOG_DEBUG("shouldnum "<<shouldnum);
-          if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
-            NFD_LOG_DEBUG("rate exceed, discard");
-            //增加过期兴趣包数量
-            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
-            }
-            else{
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
-            }
-            return;
-          }
-        }
         
         //记录每个前缀的入端口
         if(interest.getName().get(1).toUri() != "PCIP"){
@@ -478,6 +448,38 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             }
           }
           return;
+        }
+        
+        //pit总容量控制
+        NFD_LOG_DEBUG("totalPit "<<totalPit);
+        if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
+          NFD_LOG_DEBUG("total pit capacity full, discard");
+            //增加过期兴趣包数量
+            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            }
+            else{
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            }
+            return;
+        }
+
+        //速率控制
+        if(interestSendingRateOfFacePrefix.find(std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)) != interestSendingRateOfFacePrefix.end()){
+          NFD_LOG_DEBUG("interestSendingRateOfFacePrefix "<<interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]);
+          auto shouldnum =interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] * double(watchdogPeriod.GetMilliSeconds())/1000;
+          NFD_LOG_DEBUG("shouldnum "<<shouldnum);
+          if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
+            NFD_LOG_DEBUG("rate exceed, discard");
+            //增加过期兴趣包数量
+            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            }
+            else{
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            }
+            return;
+          }
         }
 
         if(allPrefix.insert(prefix).second){//新前缀
