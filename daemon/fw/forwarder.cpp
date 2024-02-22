@@ -444,7 +444,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
   
-   SetWatchDog(ns3::MilliSeconds(10));
+   SetWatchDog(ns3::MilliSeconds(50));
   //SetWatchDog(50);
 }
 
@@ -494,53 +494,53 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
     auto prefix=interest.getName().getPrefix(1).toUri();
     NFD_LOG_DEBUG("prefix: "<<prefix);
 
-    // if(mynodeid==BTNkId){
-    //     //丢弃恶意端口的兴趣包
-    //     if(maliciousFace.find(ingress.face.getId())!=maliciousFace.end()){
-    //       NFD_LOG_DEBUG("discard interest from malicious face: "<<ingress.face.getId());
-    //       if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
-    //         //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]+=1; });
-    //         numDropInterestOfFace[ingress.face.getId()]+=1;
-    //       }
-    //       else{
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]=1; });
-    //         numDropInterestOfFace[ingress.face.getId()]=1;
-    //       }
-    //       if(numDropInterest.find(prefix)!=numDropInterest.end()){
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]+=1; });
-    //         numDropInterest[prefix]+=1;
-    //       }
-    //       else{
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]=1; });
-    //         numDropInterest[prefix]=1;
-    //       }
-    //       return;
-    //     }
-    //     //丢弃恶意前缀
-    //     if((maliciousPrefix.find(prefix)!=maliciousPrefix.end())&&(mynodeid==BTNkId)){
-    //       NFD_LOG_DEBUG("discard malicious prefix");
-    //       if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
-    //         //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]+=1; });
-    //         numDropInterestOfFace[ingress.face.getId()]+=1;
-    //       }
-    //       else{
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]=1; });
-    //         numDropInterestOfFace[ingress.face.getId()]=1;
-    //       }
-    //       if(numDropInterest.find(prefix)!=numDropInterest.end()){
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]+=1; });
-    //         numDropInterest[prefix]+=1;
-    //       }
-    //       else{
-    //         //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]=1; });
-    //         numDropInterest[prefix]=1;
-    //       }
-    //       NFD_LOG_DEBUG("numDropInterest: "<<numDropInterest[prefix]);
-    //       return;
-    //     }
-    // }
+    if(mynodeid==BTNkId){
+        //丢弃恶意端口的兴趣包
+        if(maliciousFace.find(ingress.face.getId())!=maliciousFace.end()){
+          NFD_LOG_DEBUG("discard interest from malicious face: "<<ingress.face.getId());
+          if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
+            //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]+=1; });
+            numDropInterestOfFace[ingress.face.getId()]+=1;
+          }
+          else{
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]=1; });
+            numDropInterestOfFace[ingress.face.getId()]=1;
+          }
+          if(numDropInterest.find(prefix)!=numDropInterest.end()){
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]+=1; });
+            numDropInterest[prefix]+=1;
+          }
+          else{
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]=1; });
+            numDropInterest[prefix]=1;
+          }
+          return;
+        }
+        //丢弃恶意前缀
+        if((maliciousPrefix.find(prefix)!=maliciousPrefix.end())&&(mynodeid==BTNkId)){
+          NFD_LOG_DEBUG("discard malicious prefix");
+          if(numDropInterestOfFace.find(ingress.face.getId())!=numDropInterestOfFace.end()){
+            //如果丢弃兴趣包，则在一个RTT后视为未满足的兴趣包
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]+=1; });
+            numDropInterestOfFace[ingress.face.getId()]+=1;
+          }
+          else{
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterestOfFace[ingress.face.getId()]=1; });
+            numDropInterestOfFace[ingress.face.getId()]=1;
+          }
+          if(numDropInterest.find(prefix)!=numDropInterest.end()){
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]+=1; });
+            numDropInterest[prefix]+=1;
+          }
+          else{
+            //getScheduler().schedule(time::milliseconds(200), [=] { numDropInterest[prefix]=1; });
+            numDropInterest[prefix]=1;
+          }
+          NFD_LOG_DEBUG("numDropInterest: "<<numDropInterest[prefix]);
+          return;
+        }
+    }
     if(prefix != "/localhost"){
       if(allPrefix.insert(prefix).second){//新前缀
         allocPit[prefix]=minAllocPit;//初始化前缀桶
