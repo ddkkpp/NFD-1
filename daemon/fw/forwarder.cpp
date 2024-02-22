@@ -52,6 +52,7 @@ void computePITWDCallback(Forwarder *ptr)
     ptr->count++;
     ptr->countSmallPeriod++;
     ptr->countCPPeriod++;
+    ptr->count1++;
     // if(ptr->usePit.empty()){
     //   NFD_LOG_DEBUG("usePit is empty");
     // }
@@ -60,25 +61,31 @@ void computePITWDCallback(Forwarder *ptr)
     for(auto it=ptr->numInterestOfFacePrefix.begin(); it!=ptr->numInterestOfFacePrefix.end(); it++){
         it->second = 0;
     }
-    
-    if(ptr->countCPPeriod==10){
-      if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){
-        for(auto& pair: ptr->numInterest){
-            NFD_LOG_DEBUG("prefix "<<pair.first);
-            NFD_LOG_DEBUG("numInterest "<<pair.second);
-            int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
-            ptr->rate[pair.first] = nowRate;//更新当前rate
-            NFD_LOG_DEBUG("nowRate is"<<nowRate);
-            pair.second=0;
-            if(nowRate > ptr->maliciousrate){
-              auto faceSet=ptr->prefixFace[pair.first];
-              for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
-                ptr->maliciousFace.insert(*face);
-              }
-            }
-        }
-      }
+    if(ptr->count1==100)//5s后
+    {
       ptr->countCPPeriod=0;
+    }
+    if(ptr->count1>100){
+      if(ptr->countCPPeriod==50){
+        if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){
+          for(auto& pair: ptr->numInterest){
+              NFD_LOG_DEBUG("prefix "<<pair.first);
+              NFD_LOG_DEBUG("numInterest "<<pair.second);
+              int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
+              ptr->rate[pair.first] = nowRate;//更新当前rate
+              NFD_LOG_DEBUG("nowRate is"<<nowRate);
+              pair.second=0;
+              if(nowRate > ptr->maliciousrate){
+                auto faceSet=ptr->prefixFace[pair.first];
+                for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+                  NFD_LOG_DEBUG("malicious face "<<*face);
+                  //ptr->maliciousFace.insert(*face);
+                }
+              }
+          }
+        }
+        ptr->countCPPeriod=0;
+      }
     }
 
     for(const auto& pair: ptr->usePit){
@@ -317,6 +324,9 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         auto prefix=interest.getName().getPrefix(1).toUri();
         NFD_LOG_DEBUG("prefix: "<<prefix);
 
+
+        numInterest[prefix]+=1;
+
         if(maliciousFace.find(ingress)!=maliciousFace.end()){
           NFD_LOG_DEBUG("maliciousFace, discard");
           return;
@@ -373,7 +383,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           rate[prefix]=0;
           usePit[prefix]=0;//初始化usePit
         }
-        numInterest[prefix]+=1;
         usePit[prefix]+=1;
         totalPit+=1;
 
