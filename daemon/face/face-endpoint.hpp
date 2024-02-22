@@ -53,6 +53,12 @@ operator<<(std::ostream& os, const FaceEndpoint& fe)
   return os << '(' << fe.face.getId() << ',' << fe.endpoint << ')';
 }
 
+inline bool 
+operator<(const FaceEndpoint& lhs, const FaceEndpoint& rhs) {
+    // 提供比较规则，例如：
+    return lhs.face.getId() < rhs.face.getId();
+}
+
 } // namespace nfd
 
 #endif // NFD_DAEMON_FACE_FACE_ENDPOINT_HPP
