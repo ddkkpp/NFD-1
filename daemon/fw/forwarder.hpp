@@ -180,8 +180,8 @@ public:
   int minAllocPit=200;//每个前缀的pit初步上限
   int minAcceptRate=100;//每个前缀的兴趣包速率初步上限
   std::unordered_set<std::string> allPrefix;//经过的前缀
-  int pitTotalCapacity=1500;//总共Pit容量限制
-  int unallocPitCapacity=1500;//未分配pit容量
+  int pitTotalCapacity=1100;//总共Pit容量限制
+  int unallocPitCapacity=1100;//未分配pit容量
   int curUnallocPit=0;//未分配pit空间中的占据量
   std::unordered_set<std::string> unallocName;//未分配空间中占据的pit完整name
 
