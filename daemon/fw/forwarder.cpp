@@ -369,17 +369,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("prefix: "<<prefix);
 
         if(maliciousFace.find(ingress)!=maliciousFace.end()){
+          NFD_LOG_DEBUG("maliciousFace, discard");
           return;
         }
 
-        if(allPrefix.insert(prefix).second){//新前缀
-          numInterest[prefix]=0;//初始化numInterest
-          rate[prefix]=0;
-          usePit[prefix]=0;//初始化usePit
-        }
-        numInterest[prefix]+=1;
-        usePit[prefix]+=1;
-        totalPit+=1;
+
         //统计每个端口的每个前缀的兴趣包数量
         if(numInterestOfFacePrefix.find(std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix))!=numInterestOfFacePrefix.end()){
           numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]+=1;
@@ -387,6 +381,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         else{
           numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]=1;
         }
+        NFD_LOG_DEBUG("numInterestOfFacePrefix "<<numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]);
         //消费者边缘节点记录收到兴趣包数量
         if(edgeId.find(mynodeid)!=edgeId.end()){
           if(numInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numInterestOfFace.end()){
@@ -480,6 +475,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           }
           return;
         }
+
+        if(allPrefix.insert(prefix).second){//新前缀
+          numInterest[prefix]=0;//初始化numInterest
+          rate[prefix]=0;
+          usePit[prefix]=0;//初始化usePit
+        }
+        numInterest[prefix]+=1;
+        usePit[prefix]+=1;
+        totalPit+=1;
 
     }
     
