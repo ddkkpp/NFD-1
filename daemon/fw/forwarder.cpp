@@ -79,7 +79,7 @@ void computePITWDCallback(Forwarder *ptr)
                 auto faceSet=ptr->prefixFace[pair.first];
                 for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
                   NFD_LOG_DEBUG("malicious face "<<*face);
-                  //ptr->maliciousFace.insert(*face);
+                  ptr->maliciousFace.insert(*face);
                 }
               }
           }
