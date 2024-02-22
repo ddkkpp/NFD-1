@@ -61,12 +61,12 @@ void computePITWDCallback(Forwarder *ptr)
     for(auto it=ptr->numInterestOfFacePrefix.begin(); it!=ptr->numInterestOfFacePrefix.end(); it++){
         it->second = 0;
     }
-    if(ptr->count1==100)//5s后
-    {
-      ptr->countCPPeriod=0;
-    }
-    if(ptr->count1>100){
-      if(ptr->countCPPeriod==50){
+    // if(ptr->count1==100)//5s后
+    // {
+    //   ptr->countCPPeriod=0;
+    // }
+    // if(ptr->count1>100){
+      if(ptr->countCPPeriod==10){
         if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){
           for(auto& pair: ptr->numInterest){
               NFD_LOG_DEBUG("prefix "<<pair.first);
@@ -86,7 +86,7 @@ void computePITWDCallback(Forwarder *ptr)
         }
         ptr->countCPPeriod=0;
       }
-    }
+    //}
 
     for(const auto& pair: ptr->usePit){
         if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每50ms采样pit到pitSeries
