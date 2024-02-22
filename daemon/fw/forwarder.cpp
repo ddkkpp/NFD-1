@@ -66,6 +66,7 @@ void computePITWDCallback(Forwarder *ptr)
     //   ptr->countCPPeriod=0;
     // }
     // if(ptr->count1>100){
+      //if(ptr->countCPPeriod==60){
       if(ptr->countCPPeriod==10){
         if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){
           for(auto& pair: ptr->numInterest){
