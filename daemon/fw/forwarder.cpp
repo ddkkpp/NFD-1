@@ -61,7 +61,7 @@ void computePITWDCallback(Forwarder *ptr)
         it->second = 0;
     }
     
-    if(ptr->countCPPeriod==10){//每500ms小周期CP判断是否发送PCIP
+    if(ptr->countCPPeriod==10){//每1000ms小周期CP判断是否发送PCIP
       if(ptr->CPId.find(ptr->mynodeid)!=ptr->CPId.end()){//CP节点
         for(auto& pair: ptr->numInterest){
             NFD_LOG_DEBUG("prefix "<<pair.first);
@@ -372,6 +372,14 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         auto prefix=interest.getName().getPrefix(1).toUri();
         NFD_LOG_DEBUG("prefix: "<<prefix);
 
+        if(allPrefix.insert(prefix).second){//新前缀
+          numInterest[prefix]=0;//初始化numInterest
+          rate[prefix]=0;
+          usePit[prefix]=0;//初始化usePit
+        }
+        numInterest[prefix]+=1;
+        NFD_LOG_DEBUG("numInterest"<<numInterest[prefix]);
+
         if(maliciousFace.find(ingress)!=maliciousFace.end()){
           NFD_LOG_DEBUG("maliciousFace, discard");
           return;
@@ -482,12 +490,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           }
         }
 
-        if(allPrefix.insert(prefix).second){//新前缀
-          numInterest[prefix]=0;//初始化numInterest
-          rate[prefix]=0;
-          usePit[prefix]=0;//初始化usePit
-        }
-        numInterest[prefix]+=1;
         usePit[prefix]+=1;
         totalPit+=1;
 
