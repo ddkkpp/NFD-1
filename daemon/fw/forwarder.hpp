@@ -147,7 +147,8 @@ public:
   void
   setConfigFile(ConfigFile& configFile);
 
-  void SetWatchDog(double t);
+   void SetWatchDog(ns3::Time t);
+    //void SetWatchDog(double t);
 
 public:
   /** \brief trigger before PIT entry is satisfied
@@ -176,16 +177,17 @@ public:
   int totalPit=0;//总占据pit
   std::queue<int> totalPitSeries;
   int avgTotalPit=0;
-  int minAllocPit=100;//每个前缀的pit初步上限
-  int minAcceptRate=500;//每个前缀的兴趣包速率初步上限
+  int minAllocPit=200;//每个前缀的pit初步上限
+  int minAcceptRate=100;//每个前缀的兴趣包速率初步上限
   std::unordered_set<std::string> allPrefix;//经过的前缀
-  int pitTotalCapacity=1000;//总共Pit容量限制
-  int unallocPitCapacity=1000;//未分配pit容量
+  int pitTotalCapacity=1500;//总共Pit容量限制
+  int unallocPitCapacity=1500;//未分配pit容量
   int curUnallocPit=0;//未分配pit空间中的占据量
   std::unordered_set<std::string> unallocName;//未分配空间中占据的pit完整name
 
   std::map<std::string, std::queue<int>> pitSeries;//每个前缀的历史pit序列，滑动更新
-  std::map<std::string, int> curPit;//每个前缀的当前pit
+  std::map<std::string, int> usePit;//每个前缀桶中的占用pit
+  std::map<std::string, int> curPit;//每个前缀的pit
   std::map<std::string, int> avgPit;//每个前缀的平均pit
 
   std::map<std::string, int> allocPit;//每个前缀分配的pit容量
@@ -195,11 +197,15 @@ public:
   std::map<std::string, int> numInterest;//每个前缀在当前周期的兴趣包到达数目
 
   std::unordered_set<std::string> suspectPrefix;//速率超标的可疑前缀
-  //std::unordered_set<std::string> curMaliciousPrefix;//当前恶意前缀
+  std::unordered_set<std::string> curMaliciousPrefix;//当前恶意前缀
   std::unordered_set<std::string> maliciousPrefix;//恶意前缀
 
   int timePitSeries=0;
   int timeDelaySeries=0;
+  int count=0;
+  int countSmallPeriod=0;
+  int countCPPeriod=0;
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(50);//单位毫秒
 
   std::map<std::string, ns3::Time> sendInterestTime;//每个兴趣包（完整名字，非前缀）的到达时刻
   std::map<std::string, std::vector<ns3::Time>> delaySeries;//每个前缀的历史delay序列，周期刷新
@@ -208,8 +214,38 @@ public:
   std::map<std::string, int> numData;//每个前缀到来的数据包数目
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
+  std::map<FaceEndpoint, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
+  std::map<FaceEndpoint, int> numDataOfFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
+  std::map<FaceEndpoint, int> numExpiredInterestOfFace;//每个端口在当前周期发送的过期兴趣包数目
+  
+  std::map<FaceId, double> rateOfFace;//每个前缀的兴趣包到达速率
+  double avgRateOfAllFace=0;
+  std::map<std::pair<FaceEndpoint, std::string>, int> numInterestOfFacePrefix;//每个端口在当前周期的每个前缀的兴趣包到达数目，用以计算恶意请求比例
+  std::map<FaceId, double> malirateOfFace;//每个端口的恶意前缀兴趣包占总兴趣包比例
+  std::map<FaceId, std::vector<ns3::Time>> delaySeriesOfFace;//每个端口的历史delay序列，每500ms计算小周期平均delay
+  std::map<FaceId, std::vector<ns3::Time>> avgDelaySeriesOfFace;//每个端口的小周期（500ms)平均delay序列，用以计算大周期（5s）平均delay
+  std::map<FaceId, int> numDropInterestOfFace;//每个端口未响应的兴趣包数目
+  std::map<FaceId, ns3::Time> avgDelayOfFace;//每个端口的平均delay
+  ns3::Time avgDelayOfAllFace=ns3::MilliSeconds(0);
+  std::set<FaceEndpoint> suspectFace1;//第一原因可疑端口
+  std::set<FaceEndpoint> suspectFace2;//第二原因可疑端口
+  std::set<FaceEndpoint> maliciousFace;//恶意端口
+  
+  std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
+  int maliciousrate=1500;
+  int triggerPCIPRate=1500;//CP触发PCIP的速率阈值
+  int CPLimitRate=1500;//CP的PCIP的速率限制
+  int ExpiredInterestLimit=100;//每个端口的过期兴趣包数目限制
+  double ISRThreshold=0.7;//每个端口的ISR限制
+  std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制
+  std::map<FaceEndpoint,double> ISR;//每个端口的ISR
+  //std::map<std::pair<FaceEndpoint,std::string>, int> numInterestOfFacePrefix;//每个端口发送每个前缀的兴趣包的数量
+
   int mynodeid=0;
   std::map<std::string, int> noData;
+  int BTNkId=5;
+  std::unordered_set<int> edgeId={5};//消费者边缘节点
+  std::unordered_set<int> CPId={6,7,8,9,10};//生产者节点
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
