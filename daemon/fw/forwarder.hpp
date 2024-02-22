@@ -232,8 +232,8 @@ public:
   std::set<FaceEndpoint> maliciousFace;//恶意端口
   
   std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
-  int triggerPCIPRate=200;//CP触发PCIP的速率阈值
-  int CPLimitRate=200;//CP的PCIP的速率限制
+  int triggerPCIPRate=500;//CP触发PCIP的速率阈值
+  int CPLimitRate=500;//CP的PCIP的速率限制
   int ExpiredInterestLimit=100;//每个端口的过期兴趣包数目限制
   double ISRThreshold=0.7;//每个端口的ISR限制
   std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制

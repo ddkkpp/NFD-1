@@ -55,6 +55,40 @@ void computePITWDCallback(Forwarder *ptr)
     // if(ptr->usePit.empty()){
     //   NFD_LOG_DEBUG("usePit is empty");
     // }
+
+    //重置每个端口每个前缀发送的兴趣包数量
+    for(auto it=ptr->numInterestOfFacePrefix.begin(); it!=ptr->numInterestOfFacePrefix.end(); it++){
+        it->second = 0;
+    }
+    
+    if(ptr->countCPPeriod==10){//每500ms小周期CP判断是否发送PCIP
+      if(ptr->CPId.find(ptr->mynodeid)!=ptr->CPId.end()){//CP节点
+        for(auto& pair: ptr->numInterest){
+            NFD_LOG_DEBUG("prefix "<<pair.first);
+            NFD_LOG_DEBUG("numInterest "<<pair.second);
+            int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
+            ptr->rate[pair.first] = nowRate;//更新当前rate
+            NFD_LOG_DEBUG("nowRate is"<<nowRate);
+            pair.second=0;
+            if(nowRate > ptr->triggerPCIPRate){
+              auto faceSet=ptr->prefixFace[pair.first];
+              for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+                shared_ptr<Name> nameWithSequence = make_shared<Name>(pair.first);
+                nameWithSequence->append("PCIP");
+                nameWithSequence->appendSequenceNumber(ptr->CPLimitRate);//seq域填充速率限制
+                shared_ptr<Interest> PCIP = make_shared<Interest>();
+                uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max());
+                PCIP->setNonce(nonce);
+                PCIP->setName(*nameWithSequence);
+                NFD_LOG_DEBUG("PCIP is"<<PCIP->getName());
+                face->face.sendInterest(*PCIP);
+              }
+            }
+        }
+      }
+      ptr->countCPPeriod=0;
+    }
+
     for(const auto& pair: ptr->usePit){
         if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每50ms采样pit到pitSeries
             if(ptr->maliciousPrefix.find(pair.first)!=ptr->maliciousPrefix.end()){
@@ -126,7 +160,8 @@ void computePITWDCallback(Forwarder *ptr)
             }
             int nowRate = ptr->numInterest[pair.first] *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
             ptr->rate[pair.first] = nowRate;//更新当前rate(不管是不是可疑前缀)
-            //ptr->numInterest[pair.first]=0;后面决定是否发送PCIP时还要用到numInterest，所以不能在这里清零
+            NFD_LOG_DEBUG("rate "<<pair.first<<" "<<nowRate);
+            ptr->numInterest[pair.first]=0;
             ptr->numData[pair.first]=0;
             ptr->avgTotalPit=ptr->avgTotalPit+ptr->avgPit[pair.first];
         }
@@ -145,38 +180,7 @@ void computePITWDCallback(Forwarder *ptr)
         ptr->timePitSeries=0;
     }
 
-    if(ptr->countCPPeriod==10){//每500ms小周期CP判断是否发送PCIP
-      if(ptr->CPId.find(ptr->mynodeid)!=ptr->CPId.end()){//CP节点
-        for(auto& pair: ptr->numInterest){
-            NFD_LOG_DEBUG("prefix "<<pair.first);
-            NFD_LOG_DEBUG("numInterest "<<pair.second);
-            int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
-            ptr->rate[pair.first] = nowRate;//更新当前rate
-            NFD_LOG_DEBUG("nowRate is"<<nowRate);
-            pair.second=0;
-            if(nowRate > ptr->triggerPCIPRate){
-              auto faceSet=ptr->prefixFace[pair.first];
-              for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
-                shared_ptr<Name> nameWithSequence = make_shared<Name>(pair.first);
-                nameWithSequence->append("PCIP");
-                nameWithSequence->appendSequenceNumber(ptr->CPLimitRate);//seq域填充速率限制
-                shared_ptr<Interest> PCIP = make_shared<Interest>();
-                uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max());
-                PCIP->setNonce(nonce);
-                PCIP->setName(*nameWithSequence);
-                NFD_LOG_DEBUG("PCIP is"<<PCIP->getName());
-                face->face.sendInterest(*PCIP);
-              }
-            }
-            ptr->numInterest[pair.first]=0;
-        }
-      }
-      //重置每个端口每个前缀发送的兴趣包数量
-      for(auto it=ptr->numInterestOfFacePrefix.begin(); it!=ptr->numInterestOfFacePrefix.end(); it++){
-          it->second = 0;
-      }
-      ptr->countCPPeriod=0;
-    }
+
 
   NFD_LOG_DEBUG("ptr->mynodeid "<<ptr->mynodeid<<(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()));
   //先判断是否到达周期，再判断是否是边缘，因为pcon等算法在1s后才发兴趣包，所以边缘在1s后才收到兴趣包才确定自己的nodeid,这个时候如果后判断是否到达周期，则会使得1.05s时countSmallPeriod=21，无法进入
@@ -408,7 +412,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         //速率控制
         if(interestSendingRateOfFacePrefix.find(std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)) != interestSendingRateOfFacePrefix.end()){
           NFD_LOG_DEBUG("interestSendingRateOfFacePrefix "<<interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]);
-          auto shouldnum =interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] * double(watchdogPeriod.GetMilliSeconds())*10/1000;
+          auto shouldnum =interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] * double(watchdogPeriod.GetMilliSeconds())/1000;
           NFD_LOG_DEBUG("shouldnum "<<shouldnum);
           if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
             NFD_LOG_DEBUG("rate exceed, discard");
