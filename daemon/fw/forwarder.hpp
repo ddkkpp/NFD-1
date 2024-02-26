@@ -177,7 +177,8 @@ public:
   int totalPit=0;//总占据pit
   std::queue<int> totalPitSeries;
   int avgTotalPit=0;
-  int minAllocPit=200;//每个前缀的pit初步上限
+  int minAllocPit=150;//每个前缀的pit初步上限
+  int maxAllocPit=270;//每个前缀的pit初步上限
   int minAcceptRate=100;//每个前缀的兴趣包速率初步上限
   std::unordered_set<std::string> allPrefix;//经过的前缀
   int pitTotalCapacity=1500;//总共Pit容量限制
@@ -189,6 +190,7 @@ public:
   std::map<std::string, int> usePit;//每个前缀桶中的占用pit
   std::map<std::string, int> curPit;//每个前缀的pit
   std::map<std::string, int> avgPit;//每个前缀的平均pit
+  std::map<std::string, bool> allowUsePublicPIT;//是否允许使用公共空间
 
   std::map<std::string, int> allocPit;//每个前缀分配的pit容量
   //std::map<std::string, double> tao;//每个前缀的波动状态
@@ -204,7 +206,7 @@ public:
   int timeDelaySeries=0;
   int count=0;
   int countSmallPeriod=0;
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(50);//单位毫秒
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(10);//单位毫秒
 
   std::map<std::string, ns3::Time> sendInterestTime;//每个兴趣包（完整名字，非前缀）的到达时刻
   std::map<std::string, std::vector<ns3::Time>> delaySeries;//每个前缀的历史delay序列，周期刷新

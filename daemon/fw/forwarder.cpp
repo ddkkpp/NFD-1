@@ -212,6 +212,13 @@ void computePITWDCallback(Forwarder *ptr)
             if(ptr->allocPit.find(pair.first)==ptr->allocPit.end()){
               ptr->allocPit[pair.first]=ptr->minAllocPit;
             }
+            if(ptr->numInterest[pair.first]!=0){
+              double ISR = double(ptr->numInterest[pair.first]) / double(ptr->numData[pair.first]);
+              if(ISR>0.9){
+                ptr->allowUsePublicPIT[pair.first] = true;
+                NFD_LOG_DEBUG(pair.first<<" allow use public pit");
+              } 
+            }
             int nowRate = ptr->numInterest[pair.first] *(ns3::Seconds(1).GetMilliSeconds()/(ptr->watchdogPeriod.GetMilliSeconds()*10));
             if(ptr->mynodeid==ptr->BTNkId){
               if(nowRate > std::min(ptr->rate[pair.first], ptr->minAcceptRate) * ptr->tao)//添加可疑前缀
@@ -219,15 +226,17 @@ void computePITWDCallback(Forwarder *ptr)
                   NFD_LOG_DEBUG("suspectPrefix "<<pair.first);
                   ptr->suspectPrefix.insert(pair.first);
               }
-              //仅在速率超标（可疑）且占据pit超过最小分配量时，才不动态分配pit。
-              if((nowRate <= std::min(ptr->rate[pair.first], ptr->minAcceptRate) * ptr->tao) || (ptr->avgPit[pair.first] < ptr->minAllocPit) )
-              {
+              // //仅在速率超标（可疑）且占据pit超过最小分配量时，才不动态分配pit。
+              // if((nowRate <= std::min(ptr->rate[pair.first], ptr->minAcceptRate) * ptr->tao) || (ptr->avgPit[pair.first] < ptr->minAllocPit) )
+              // {
                 NFD_LOG_DEBUG("update allocPit");
                 NFD_LOG_DEBUG("temp "<<temp);
-                auto alloc = std::min(ptr->unallocPitCapacity+ptr->allocPit[pair.first], std::max(temp, ptr->minAllocPit));
+                //分配量不能低于minAllocPit，不能高于maxAllocPit
+                auto alloc = std::min(std::min(ptr->unallocPitCapacity+ptr->allocPit[pair.first], std::max(temp, ptr->minAllocPit)), ptr->maxAllocPit);
                 ptr->unallocPitCapacity = ptr->unallocPitCapacity + ptr->allocPit[pair.first] - alloc;//更新unallocPitCapacity
                 ptr->allocPit[pair.first] = alloc;//更新allocPit
-              }
+              //}
+              
               NFD_LOG_DEBUG("unallocPitCapacity "<<ptr->unallocPitCapacity);
               NFD_LOG_DEBUG("alloc pit "<<ptr->allocPit[pair.first]);
               NFD_LOG_DEBUG("rate "<<pair.first<<" "<<nowRate);
@@ -444,7 +453,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
   
-   SetWatchDog(ns3::MilliSeconds(50));
+   SetWatchDog(ns3::MilliSeconds(10));
   //SetWatchDog(50);
 }
 
@@ -550,6 +559,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         usePit[prefix]=0;//初始化usePit
         curPit[prefix]=0;//初始化curPit
         unallocPitCapacity=unallocPitCapacity-minAllocPit;//更新未分配空间
+        allowUsePublicPIT[prefix]=false;//初始化allowUsePublicPIT
       }
       numInterest[prefix]+=1;
       if(edgeId.find(mynodeid)!=edgeId.end()){//边缘节点
@@ -595,7 +605,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       // if(allocPit.find(prefix)==allocPit.end()){
       //   allocPit[prefix]=minAllocPit;
       // }
-      if((curPit[prefix]>allocPit[prefix])&&(mynodeid==BTNkId)){
+      if((curPit[prefix]>allocPit[prefix])&&(allowUsePublicPIT[prefix]==true)&&(mynodeid==BTNkId)){
         if(curUnallocPit<unallocPitCapacity){//插入未分配空间
           NFD_LOG_DEBUG("curUnallocPit"<<curUnallocPit);
           NFD_LOG_DEBUG("unallocPitCapacity"<<unallocPitCapacity);
