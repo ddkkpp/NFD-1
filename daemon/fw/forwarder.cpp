@@ -61,33 +61,33 @@ void computePITWDCallback(Forwarder *ptr)
         it->second = 0;
     }
     
-    if(ptr->countCPPeriod==10){//每1000ms小周期CP判断是否发送PCIP
-      if(ptr->CPId.find(ptr->mynodeid)!=ptr->CPId.end()){//CP节点
-        for(auto& pair: ptr->numInterest){
-            NFD_LOG_DEBUG("prefix "<<pair.first);
-            NFD_LOG_DEBUG("numInterest "<<pair.second);
-            int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
-            ptr->rate[pair.first] = nowRate;//更新当前rate
-            NFD_LOG_DEBUG("nowRate is"<<nowRate);
-            pair.second=0;
-            if(nowRate > ptr->triggerPCIPRate){
-              auto faceSet=ptr->prefixFace[pair.first];
-              for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
-                shared_ptr<Name> nameWithSequence = make_shared<Name>(pair.first);
-                nameWithSequence->append("PCIP");
-                nameWithSequence->appendSequenceNumber(ptr->CPLimitRate);//seq域填充速率限制
-                shared_ptr<Interest> PCIP = make_shared<Interest>();
-                uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max());
-                PCIP->setNonce(nonce);
-                PCIP->setName(*nameWithSequence);
-                NFD_LOG_DEBUG("PCIP is"<<PCIP->getName());
-                face->face.sendInterest(*PCIP);
-              }
-            }
-        }
-      }
-      ptr->countCPPeriod=0;
-    }
+    // if(ptr->countCPPeriod==10){//每1000ms小周期CP判断是否发送PCIP
+    //   if(ptr->CPId.find(ptr->mynodeid)!=ptr->CPId.end()){//CP节点
+    //     for(auto& pair: ptr->numInterest){
+    //         NFD_LOG_DEBUG("prefix "<<pair.first);
+    //         NFD_LOG_DEBUG("numInterest "<<pair.second);
+    //         int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
+    //         ptr->rate[pair.first] = nowRate;//更新当前rate
+    //         NFD_LOG_DEBUG("nowRate is"<<nowRate);
+    //         pair.second=0;
+    //         if(nowRate > ptr->triggerPCIPRate){
+    //           auto faceSet=ptr->prefixFace[pair.first];
+    //           for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+    //             shared_ptr<Name> nameWithSequence = make_shared<Name>(pair.first);
+    //             nameWithSequence->append("PCIP");
+    //             nameWithSequence->appendSequenceNumber(ptr->CPLimitRate);//seq域填充速率限制
+    //             shared_ptr<Interest> PCIP = make_shared<Interest>();
+    //             uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max());
+    //             PCIP->setNonce(nonce);
+    //             PCIP->setName(*nameWithSequence);
+    //             NFD_LOG_DEBUG("PCIP is"<<PCIP->getName());
+    //             face->face.sendInterest(*PCIP);
+    //           }
+    //         }
+    //     }
+    //   }
+    //   ptr->countCPPeriod=0;
+    // }
 
     for(const auto& pair: ptr->usePit){
         if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每50ms采样pit到pitSeries
