@@ -412,7 +412,7 @@ void computePITWDCallback(Forwarder *ptr)
       NFD_LOG_DEBUG("avgDelayOfAllFace "<<ptr->avgDelayOfAllFace);
       //确定恶意端口
       for(const auto& pair5: ptr->avgDelaySeriesOfFace){
-        if(ptr->malirateOfFace[pair5.first]>0.5||ptr->avgDelayOfFace[pair5.first]>2*ptr->avgDelayOfAllFace||ptr->rateOfFace[pair5.first]>2*ptr->avgRateOfAllFace){
+        if(ptr->malirateOfFace[pair5.first]>0.5&&ptr->avgDelayOfFace[pair5.first]>2*ptr->avgDelayOfAllFace&&ptr->rateOfFace[pair5.first]>2*ptr->avgRateOfAllFace){
           NFD_LOG_DEBUG("malicious face: "<<pair5.first);
           ptr->maliciousFace.insert(pair5.first);
         }
