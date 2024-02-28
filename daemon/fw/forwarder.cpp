@@ -70,7 +70,17 @@ void computePITWDCallback(Forwarder *ptr)
             ptr->rate[pair.first] = nowRate;//更新当前rate
             NFD_LOG_DEBUG("nowRate is"<<nowRate);
             pair.second=0;
-            if(nowRate > ptr->triggerPCIPRate){
+            if(ptr->countTime[pair.first]==0){
+              if(nowRate > ptr->triggerPCIPRate){
+                ptr->countTime[pair.first]=1;
+                NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
+              }
+            }
+            else{
+              ptr->countTime[pair.first]++;
+              NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
+            }
+            if(ptr->countTime[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1000)){
               auto faceSet=ptr->prefixFace[pair.first];
               for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
                 shared_ptr<Name> nameWithSequence = make_shared<Name>(pair.first);
@@ -249,7 +259,18 @@ void computePITWDCallback(Forwarder *ptr)
         }
         NFD_LOG_DEBUG("numExpiredInterestOfFace "<<pair.first<<" "<<ptr->numExpiredInterestOfFace[pair.first]);
         //第一重判断恶意端口
-        if((ptr->numExpiredInterestOfFace[pair.first] > ptr->ExpiredInterestLimit) && (ptr->ISR[pair.first] < ptr->ISRThreshold)){
+
+        if(ptr->countTime1[pair.first]==0){
+          if((ptr->numExpiredInterestOfFace[pair.first] > ptr->ExpiredInterestLimit) && (ptr->ISR[pair.first] < ptr->ISRThreshold)){
+            ptr->countTime1[pair.first]=1;
+            NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
+          }
+        }
+        else{
+          ptr->countTime1[pair.first]++;
+          NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
+        }
+        if(ptr->countTime1[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1000)){
           NFD_LOG_DEBUG("suspectFace1: "<<pair.first);
           ptr->suspectFace1.insert(pair.first);
           if(ptr->suspectFace2.find(pair.first)!=ptr->suspectFace2.end()){
@@ -316,7 +337,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
   
-   SetWatchDog(ns3::MilliSeconds(50));
+   SetWatchDog(ns3::MilliSeconds(10));
   //SetWatchDog(50);
 }
 
@@ -477,6 +498,20 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           NFD_LOG_DEBUG("interestSendingRateOfFacePrefix "<<interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)]);
           auto shouldnum =interestSendingRateOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] * double(watchdogPeriod.GetMilliSeconds())/1000;
           NFD_LOG_DEBUG("shouldnum "<<shouldnum);
+          if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
+            NFD_LOG_DEBUG("rate exceed, discard");
+            //增加过期兴趣包数量
+            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            }
+            else{
+              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            }
+            return;
+          }
+        }
+        if((suspectFace1.find(const_cast<FaceEndpoint&>(ingress))!=suspectFace1.end())&&(edgeId.find(mynodeid)!=edgeId.end())){
+          auto shouldnum =edgeLimitRate * double(watchdogPeriod.GetMilliSeconds())/1000;
           if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
             NFD_LOG_DEBUG("rate exceed, discard");
             //增加过期兴趣包数量

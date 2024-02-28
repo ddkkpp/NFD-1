@@ -205,7 +205,10 @@ public:
   int count=0;
   int countSmallPeriod=0;
   int countCPPeriod=0;
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(50);//单位毫秒
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(10);//单位毫秒
+
+  std::map<std::string, int> countTime;
+  std::map<FaceEndpoint, int> countTime1;
 
   std::map<std::string, ns3::Time> sendInterestTime;//每个兴趣包（完整名字，非前缀）的到达时刻
   std::map<std::string, std::vector<ns3::Time>> delaySeries;//每个前缀的历史delay序列，周期刷新
@@ -232,9 +235,10 @@ public:
   std::set<FaceEndpoint> maliciousFace;//恶意端口
   
   std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
-  int triggerPCIPRate=1500;//CP触发PCIP的速率阈值
-  int CPLimitRate=1500;//CP的PCIP的速率限制
-  int ExpiredInterestLimit=100;//每个端口的过期兴趣包数目限制
+  int triggerPCIPRate=800;//CP触发PCIP的速率阈值
+  int CPLimitRate=800;//CP的PCIP的速率限制
+  int edgeLimitRate=200;
+  int ExpiredInterestLimit=10;//每个端口的过期兴趣包数目限制
   double ISRThreshold=0.7;//每个端口的ISR限制
   std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制
   std::map<FaceEndpoint,double> ISR;//每个端口的ISR
