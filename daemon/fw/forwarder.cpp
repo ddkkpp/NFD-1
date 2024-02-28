@@ -77,6 +77,12 @@ void computePITWDCallback(Forwarder *ptr)
               NFD_LOG_DEBUG("nowRate is"<<nowRate);
               pair.second=0;
               if(nowRate > ptr->maliciousrate){
+                if(ptr->countTimeSinceSuspect.find(pair.first)==ptr->countTimeSinceSuspect.end()){
+                  ptr->countTimeSinceSuspect[pair.first]=0;
+                }
+                else{
+                  ptr->countTimeSinceSuspect[pair.first]++;
+                }
                 auto faceSet=ptr->prefixFace[pair.first];
                 for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
                   //删除所有匹配前缀为pair.first的pitEntry

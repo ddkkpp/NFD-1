@@ -220,6 +220,8 @@ public:
   std::map<std::string, int> numData;//每个前缀到来的数据包数目
   std::map<std::string, int> numDropInterest;//每个前缀未响应的兴趣包数目
 
+  std::map<std::string, int> countTimeSinceSuspect;
+
   std::map<FaceEndpoint, int> numInterestOfFace;//每个端口在当前周期的兴趣包到达数目，用以计算rate
   std::map<FaceEndpoint, int> numDataOfFace;//向每个端口在当前周期发送的数据包数目，用以计算ISR
   std::map<FaceEndpoint, int> numExpiredInterestOfFace;//每个端口在当前周期发送的过期兴趣包数目
