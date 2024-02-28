@@ -188,7 +188,7 @@ void computePITWDCallback(Forwarder *ptr)
               ptr->ISR[pair.first] = 1;
             }
             if(ptr->countTime[pair.first]==0){
-              if((ptr->ISR[pair.first] < ptr->ISRThreshold)){
+              if(((ptr->ISR[pair.first] < ptr->ISRThreshold))&&(ptr->rate[pair.first]>300)){
                 ptr->countTime[pair.first]=1;
                 NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
               }
@@ -326,7 +326,7 @@ void Forwarder::erasePitEntry(const Name& prefix) {
   for(auto it = m_pit.begin(); it != m_pit.end(); ) {
     NFD_LOG_DEBUG("pit size: "<<m_pit.size());
     if(it->getName().getPrefix(1) == prefix) {
-      NFD_LOG_DEBUG(it->getName());
+      NFD_LOG_DEBUG("yes "<<it->getName());
       auto e=&(*it);
       ++it;
       auto entry=const_cast<pit::Entry*>(e);
@@ -335,6 +335,25 @@ void Forwarder::erasePitEntry(const Name& prefix) {
       totalPit--;
       usePit[prefix.toUri()]--;
     } else {
+      NFD_LOG_DEBUG("no "<<it->getName());
+      ++it;
+    }
+  }
+//下次调用该函数时，遍历不完全（未解决）
+  NFD_LOG_DEBUG("iterate again");
+  for(auto it = m_pit.begin(); it != m_pit.end(); ) {
+    NFD_LOG_DEBUG("pit size: "<<m_pit.size());
+    if(it->getName().getPrefix(1) == prefix) {
+      NFD_LOG_DEBUG("yes "<<it->getName());
+      auto e=&(*it);
+      ++it;
+      auto entry=const_cast<pit::Entry*>(e);
+      e->expiryTimer.cancel();
+      m_pit.erase(entry);
+      totalPit--;
+      usePit[prefix.toUri()]--;
+    } else {
+      NFD_LOG_DEBUG("no "<<it->getName());
       ++it;
     }
   }
@@ -398,8 +417,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         numInterest[prefix]+=1;
         NFD_LOG_DEBUG("numInterest"<<numInterest[prefix]);
 
-        if(maliciousFace.find(ingress)!=maliciousFace.end()){
-          NFD_LOG_DEBUG("maliciousFace, discard");
+        if(maliciousPrefix.find(prefix)!=maliciousPrefix.end()){
+          NFD_LOG_DEBUG("maliciousPrefix, discard");
           return;
         }
 
