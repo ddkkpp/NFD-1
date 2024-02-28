@@ -74,26 +74,28 @@ void computePITWDCallback(Forwarder *ptr)
               NFD_LOG_DEBUG("numInterest "<<pair.second);
               int nowRate = pair.second *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
               ptr->rate[pair.first] = nowRate;//更新当前rate
-              NFD_LOG_DEBUG("nowRate is"<<nowRate);
+              NFD_LOG_DEBUG("nowRate is "<<nowRate);
               pair.second=0;
-              if(nowRate > ptr->maliciousrate){
-                if(ptr->countTimeSinceSuspect.find(pair.first)==ptr->countTimeSinceSuspect.end()){
-                  ptr->countTimeSinceSuspect[pair.first]=1;
-                }
-                else{
-                  ptr->countTimeSinceSuspect[pair.first]++;
-                }
-                NFD_LOG_DEBUG("countTimeSinceSuspect: "<<ptr->countTimeSinceSuspect[pair.first]);
-                if(ptr->countTimeSinceSuspect[pair.first] * 10 * ptr->watchdogPeriod = ns3::MilliSeconds(1000)){
-                  auto faceSet=ptr->prefixFace[pair.first];
-                  for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
-                    //删除所有匹配前缀为pair.first的pitEntry
-                    ptr->erasePitEntry(pair.first);
-                    NFD_LOG_DEBUG("malicious face "<<*face);
-                    ptr->maliciousFace.insert(*face);
-                  }
+              if(ptr->countTime[pair.first]==0){
+                if(nowRate > ptr->maliciousrate){
+                  ptr->countTime[pair.first]=1;
+                  NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
                 }
               }
+              else{
+                ptr->countTime[pair.first]++;
+                NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
+              }
+              if(ptr->countTime[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1000)){
+                auto faceSet=ptr->prefixFace[pair.first];
+                for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+                  //删除所有匹配前缀为pair.first的pitEntry
+                  ptr->erasePitEntry(pair.first);
+                  NFD_LOG_DEBUG("malicious face "<<*face);
+                  ptr->maliciousFace.insert(*face);
+                }
+              }
+              
           }
         }
         ptr->countCPPeriod=0;
