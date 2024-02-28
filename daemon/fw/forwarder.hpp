@@ -150,6 +150,10 @@ public:
    void SetWatchDog(ns3::Time t);
     //void SetWatchDog(double t);
 
+      //添加的删除pit方法
+  NFD_VIRTUAL_WITH_TESTS void
+  erasePitEntry(const Name& prefix) ;
+
 public:
   /** \brief trigger before PIT entry is satisfied
    *  \sa Strategy::beforeSatisfyInterest
@@ -241,7 +245,7 @@ public:
   int ExpiredInterestLimit=10;//每个端口的过期兴趣包数目限制
   double ISRThreshold=0.7;//每个端口的ISR限制
   std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制
-  std::map<FaceEndpoint,double> ISR;//每个端口的ISR
+  std::map<std::string,double> ISR;//每个前缀的ISR
   //std::map<std::pair<FaceEndpoint,std::string>, int> numInterestOfFacePrefix;//每个端口发送每个前缀的兴趣包的数量
 
   int mynodeid=0;

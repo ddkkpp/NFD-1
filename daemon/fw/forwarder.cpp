@@ -171,6 +171,39 @@ void computePITWDCallback(Forwarder *ptr)
             int nowRate = ptr->numInterest[pair.first] *(ns3::Seconds(1).GetMilliSeconds()/double((ptr->watchdogPeriod.GetMilliSeconds()*10)));
             ptr->rate[pair.first] = nowRate;//更新当前rate(不管是不是可疑前缀)
             NFD_LOG_DEBUG("rate "<<pair.first<<" "<<nowRate);
+
+
+            NFD_LOG_DEBUG("numInterest "<<pair.first<<" "<<ptr->numInterest[pair.first]);
+            NFD_LOG_DEBUG("numData "<<pair.first<<" "<<ptr->numData[pair.first]);
+            if(ptr->numInterest[pair.first]!=0){
+              if(ptr->numData.find(pair.first)!=ptr->numData.end()){
+                ptr->ISR[pair.first] = double(ptr->numData[pair.first]) / double(ptr->numInterest[pair.first]);
+                NFD_LOG_DEBUG("ISR "<<pair.first<<" "<<ptr->ISR[pair.first]);
+              }
+              else{
+                ptr->ISR[pair.first] = 0;
+              }
+            }
+            else{
+              ptr->ISR[pair.first] = 1;
+            }
+            if(ptr->countTime[pair.first]==0){
+              if((ptr->ISR[pair.first] < ptr->ISRThreshold)){
+                ptr->countTime[pair.first]=1;
+                NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
+              }
+            }
+            else{
+              ptr->countTime[pair.first]++;
+              NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
+            }
+            if(ptr->countTime[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1900)){
+                //删除所有匹配前缀为pair.first的pitEntry
+                ptr->erasePitEntry(pair.first);
+                ptr->maliciousPrefix.insert(pair.first);
+                NFD_LOG_DEBUG("maliciousPrefix: "<<pair.first);
+            }
+
             ptr->numInterest[pair.first]=0;
             ptr->numData[pair.first]=0;
             ptr->avgTotalPit=ptr->avgTotalPit+ptr->avgPit[pair.first];
@@ -231,56 +264,6 @@ void computePITWDCallback(Forwarder *ptr)
       ptr->countSmallPeriod=0; 
     }
 
-  if(ptr->count==10){//每500ms统计一次face的ISR,过期兴趣包数量
-    if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
-      for(const auto& pair: ptr->numInterestOfFace){
-        NFD_LOG_DEBUG(pair.first);
-        //ISR
-        NFD_LOG_DEBUG("numInterestOfFace "<<pair.first<<" "<<ptr->numInterestOfFace[pair.first]);
-        NFD_LOG_DEBUG("numDataOfFace "<<pair.first<<" "<<ptr->numDataOfFace[pair.first]);
-        if(ptr->numInterestOfFace[pair.first]!=0){
-          if(ptr->numDataOfFace.find(pair.first)!=ptr->numDataOfFace.end()){
-            ptr->ISR[pair.first] = double(ptr->numDataOfFace[pair.first]) / double(ptr->numInterestOfFace[pair.first]);
-            NFD_LOG_DEBUG("ISR "<<pair.first<<" "<<ptr->ISR[pair.first]);
-          }
-          else{
-            ptr->ISR[pair.first] = 0;
-          }
-        }
-        else{
-          ptr->ISR[pair.first] = 1;
-        }
-        //过期兴趣包
-        if(ptr->numExpiredInterestOfFace.find(pair.first)!=ptr->numExpiredInterestOfFace.end()){
-
-        }
-        else{
-          ptr->numExpiredInterestOfFace[pair.first]=0;
-        }
-        NFD_LOG_DEBUG("numExpiredInterestOfFace "<<pair.first<<" "<<ptr->numExpiredInterestOfFace[pair.first]);
-        //第一重判断恶意端口
-
-        if(ptr->countTime1[pair.first]==0){
-          if((ptr->ISR[pair.first] < ptr->ISRThreshold)){
-            ptr->countTime1[pair.first]=1;
-            NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
-          }
-        }
-        else{
-          ptr->countTime1[pair.first]++;
-          NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
-        }
-        if(ptr->countTime1[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1900)){
-            ptr->maliciousFace.insert(pair.first);
-            NFD_LOG_DEBUG("maliciousFace: "<<pair.first);
-        }
-        ptr->numInterestOfFace[pair.first]=0;
-        ptr->numDataOfFace[pair.first]=0;
-        ptr->numExpiredInterestOfFace[pair.first]=0;
-      } 
-    }
-    ptr->count=0;
-  }
     
 
   ptr->computePITWD.Ping(ptr->watchdogPeriod);
@@ -338,6 +321,24 @@ Forwarder::Forwarder(FaceTable& faceTable)
 }
 
 Forwarder::~Forwarder() = default;
+
+void Forwarder::erasePitEntry(const Name& prefix) {
+  for(auto it = m_pit.begin(); it != m_pit.end(); ) {
+    NFD_LOG_DEBUG("pit size: "<<m_pit.size());
+    if(it->getName().getPrefix(1) == prefix) {
+      NFD_LOG_DEBUG(it->getName());
+      auto e=&(*it);
+      ++it;
+      auto entry=const_cast<pit::Entry*>(e);
+      e->expiryTimer.cancel();
+      m_pit.erase(entry);
+      totalPit--;
+      usePit[prefix.toUri()]--;
+    } else {
+      ++it;
+    }
+  }
+}
 
 void 
 Forwarder::SetWatchDog(ns3::Time t)
