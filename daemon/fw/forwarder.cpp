@@ -79,6 +79,8 @@ void computePITWDCallback(Forwarder *ptr)
               if(nowRate > ptr->maliciousrate){
                 auto faceSet=ptr->prefixFace[pair.first];
                 for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+                  //删除所有匹配前缀为pair.first的pitEntry
+                  ptr->erasePitEntry(pair.first);
                   NFD_LOG_DEBUG("malicious face "<<*face);
                   ptr->maliciousFace.insert(*face);
                 }
@@ -278,6 +280,24 @@ Forwarder::Forwarder(FaceTable& faceTable)
 }
 
 Forwarder::~Forwarder() = default;
+
+void Forwarder::erasePitEntry(const Name& prefix) {
+  for(auto it = m_pit.begin(); it != m_pit.end(); ) {
+    NFD_LOG_DEBUG("pit size: "<<m_pit.size());
+    if(it->getName().getPrefix(1) == prefix) {
+      NFD_LOG_DEBUG(it->getName());
+      auto e=&(*it);
+      ++it;
+      auto entry=const_cast<pit::Entry*>(e);
+      e->expiryTimer.cancel();
+      m_pit.erase(entry);
+      totalPit--;
+      usePit[prefix.toUri()]--;
+    } else {
+      ++it;
+    }
+  }
+}
 
 void 
 Forwarder::SetWatchDog(ns3::Time t)
