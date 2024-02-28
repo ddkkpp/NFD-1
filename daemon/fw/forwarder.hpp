@@ -211,7 +211,7 @@ public:
   int countSmallPeriod=0;
   int countCPPeriod=0;
   int count1=0;
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(50);//单位毫秒
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(10);//单位毫秒
 
   std::map<std::string, ns3::Time> sendInterestTime;//每个兴趣包（完整名字，非前缀）的到达时刻
   std::map<std::string, std::vector<ns3::Time>> delaySeries;//每个前缀的历史delay序列，周期刷新

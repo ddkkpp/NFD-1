@@ -78,17 +78,20 @@ void computePITWDCallback(Forwarder *ptr)
               pair.second=0;
               if(nowRate > ptr->maliciousrate){
                 if(ptr->countTimeSinceSuspect.find(pair.first)==ptr->countTimeSinceSuspect.end()){
-                  ptr->countTimeSinceSuspect[pair.first]=0;
+                  ptr->countTimeSinceSuspect[pair.first]=1;
                 }
                 else{
                   ptr->countTimeSinceSuspect[pair.first]++;
                 }
-                auto faceSet=ptr->prefixFace[pair.first];
-                for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
-                  //删除所有匹配前缀为pair.first的pitEntry
-                  ptr->erasePitEntry(pair.first);
-                  NFD_LOG_DEBUG("malicious face "<<*face);
-                  ptr->maliciousFace.insert(*face);
+                NFD_LOG_DEBUG("countTimeSinceSuspect: "<<ptr->countTimeSinceSuspect[pair.first]);
+                if(ptr->countTimeSinceSuspect[pair.first] * 10 * ptr->watchdogPeriod = ns3::MilliSeconds(1000)){
+                  auto faceSet=ptr->prefixFace[pair.first];
+                  for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+                    //删除所有匹配前缀为pair.first的pitEntry
+                    ptr->erasePitEntry(pair.first);
+                    NFD_LOG_DEBUG("malicious face "<<*face);
+                    ptr->maliciousFace.insert(*face);
+                  }
                 }
               }
           }
@@ -281,7 +284,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
   
-   SetWatchDog(ns3::MilliSeconds(50));
+   SetWatchDog(ns3::MilliSeconds(10));
   //SetWatchDog(50);
 }
 
