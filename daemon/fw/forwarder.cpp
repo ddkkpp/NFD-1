@@ -104,9 +104,9 @@ void computePITWDCallback(Forwarder *ptr)
 
     for(const auto& pair: ptr->usePit){
         if(ptr->pitSeries.find(pair.first)!=ptr->pitSeries.end()){//每50ms采样pit到pitSeries
-            if(ptr->maliciousPrefix.find(pair.first)!=ptr->maliciousPrefix.end()){
-              //NFD_LOG_DEBUG("prefix: "<<pair.first<<" pit: "<<pair.second);
-            }
+            //if(ptr->maliciousPrefix.find(pair.first)!=ptr->maliciousPrefix.end()){
+              NFD_LOG_DEBUG("prefix: "<<pair.first<<" every pit: "<<pair.second);
+            //}
             ptr->pitSeries[pair.first].push(pair.second);
             if(ptr->pitSeries[pair.first].size()>10){//pitSeries保存10个历史值
                 ptr->pitSeries[pair.first].pop();
