@@ -195,7 +195,8 @@ void computePITWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("ptr->mynodeid "<<ptr->mynodeid<<(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()));
   //先判断是否到达周期，再判断是否是边缘，因为pcon等算法在1s后才发兴趣包，所以边缘在1s后才收到兴趣包才确定自己的nodeid,这个时候如果后判断是否到达周期，则会使得1.05s时countSmallPeriod=21，无法进入
     if(ptr->countSmallPeriod==10){//每500ms小周期统计一次face的delay平均值
-      if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
+      // if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
+      if(ptr->mynodeid==ptr->BTNkId){//瓶颈节点
         for(const auto& pair: ptr->delaySeriesOfFace){
             NFD_LOG_DEBUG(pair.first);
             if(ptr->delaySeriesOfFace.find(pair.first)==ptr->delaySeriesOfFace.end()){
@@ -232,7 +233,8 @@ void computePITWDCallback(Forwarder *ptr)
     }
 
   if(ptr->count==10){//每500ms统计一次face的ISR,过期兴趣包数量
-    if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
+    // if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
+    if(ptr->mynodeid==ptr->BTNkId){//瓶颈节点
       for(const auto& pair: ptr->numInterestOfFace){
         NFD_LOG_DEBUG(pair.first);
         //ISR
