@@ -195,8 +195,7 @@ void computePITWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("ptr->mynodeid "<<ptr->mynodeid<<(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()));
   //先判断是否到达周期，再判断是否是边缘，因为pcon等算法在1s后才发兴趣包，所以边缘在1s后才收到兴趣包才确定自己的nodeid,这个时候如果后判断是否到达周期，则会使得1.05s时countSmallPeriod=21，无法进入
     if(ptr->countSmallPeriod==10){//每500ms小周期统计一次face的delay平均值
-      // if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
-      if(ptr->mynodeid==ptr->BTNkId){//瓶颈节点
+      if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
         for(const auto& pair: ptr->delaySeriesOfFace){
             NFD_LOG_DEBUG(pair.first);
             if(ptr->delaySeriesOfFace.find(pair.first)==ptr->delaySeriesOfFace.end()){
@@ -233,8 +232,7 @@ void computePITWDCallback(Forwarder *ptr)
     }
 
   if(ptr->count==10){//每500ms统计一次face的ISR,过期兴趣包数量
-    // if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
-    if(ptr->mynodeid==ptr->BTNkId){//瓶颈节点
+    if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){//边缘节点
       for(const auto& pair: ptr->numInterestOfFace){
         NFD_LOG_DEBUG(pair.first);
         //ISR
@@ -272,7 +270,7 @@ void computePITWDCallback(Forwarder *ptr)
           ptr->countTime1[pair.first]++;
           NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
         }
-        if(ptr->countTime1[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1000)){
+        if(ptr->countTime1[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(100)){//小拓扑1000，大拓扑100
           NFD_LOG_DEBUG("suspectFace1: "<<pair.first);
           ptr->suspectFace1.insert(pair.first);
           if(ptr->suspectFace2.find(pair.first)!=ptr->suspectFace2.end()){
@@ -486,12 +484,12 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         if((totalPit>pitTotalCapacity)&&(mynodeid==BTNkId)){//只有瓶颈节点（非用户）分配PIT和丢弃兴趣包
           NFD_LOG_DEBUG("total pit capacity full, discard");
             //增加过期兴趣包数量
-            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
-            }
-            else{
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
-            }
+            // if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+            //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            // }
+            // else{
+            //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            // }
             return;
         }
 
@@ -503,12 +501,12 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
             NFD_LOG_DEBUG("rate exceed, discard");
             //增加过期兴趣包数量
-            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
-            }
-            else{
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
-            }
+            // if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+            //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            // }
+            // else{
+            //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            // }
             return;
           }
         }
@@ -517,12 +515,12 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           if(numInterestOfFacePrefix[std::make_pair(const_cast<FaceEndpoint&>(ingress), prefix)] > shouldnum){
             NFD_LOG_DEBUG("rate exceed, discard");
             //增加过期兴趣包数量
-            if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
-            }
-            else{
-              numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
-            }
+            // if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))!=numExpiredInterestOfFace.end()){
+            //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;
+            // }
+            // else{
+            //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
+            // }
             return;
           }
         }
