@@ -238,8 +238,12 @@ public:
 
   int mynodeid=0;
   std::map<std::string, int> noData;
-  int BTNkId=5;
-  std::unordered_set<int> edgeId={5};
+  // int BTNkId=5;
+  // std::unordered_set<int> edgeId={5};//消费者边缘节点
+  // std::unordered_set<int> CPId={6,7,8,9,10};//生产者节点
+  int BTNkId=40;
+  std::unordered_set<int> edgeId={20,21,22};//消费者边缘节点
+  std::unordered_set<int> CPId={14,50,11,9,15};//生产者节点
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
