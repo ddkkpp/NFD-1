@@ -237,7 +237,7 @@ public:
   std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
   int triggerPCIPRate=810;//CP触发PCIP的速率阈值
   int CPLimitRate=810;//CP的PCIP的速率限制
-  int edgeLimitRate=200;
+  int edgeLimitRate=500;
   int ExpiredInterestLimit=10;//每个端口的过期兴趣包数目限制
   double ISRThreshold=0.7;//每个端口的ISR限制
   std::map<std::pair<FaceEndpoint,std::string>, int> interestSendingRateOfFacePrefix;//每个端口发送每个前缀的兴趣包的速率限制
@@ -246,9 +246,11 @@ public:
 
   int mynodeid=0;
   std::map<std::string, int> noData;
+  //小拓扑
   // int BTNkId=5;
   // std::unordered_set<int> edgeId={5};//消费者边缘节点
   // std::unordered_set<int> CPId={6,7,8,9,10};//生产者节点
+  //大拓扑
   int BTNkId=40;
   std::unordered_set<int> edgeId={20,21,22};//消费者边缘节点
   std::unordered_set<int> CPId={14,50,11,9,15};//生产者节点

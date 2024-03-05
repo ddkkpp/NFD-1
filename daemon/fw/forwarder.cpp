@@ -248,7 +248,7 @@ void computePITWDCallback(Forwarder *ptr)
           }
         }
         else{
-          ptr->ISR[pair.first] = 1;
+          ptr->ISR[pair.first] = 0;//为了使pcon识别为恶意，置为0
         }
         //过期兴趣包
         if(ptr->numExpiredInterestOfFace.find(pair.first)!=ptr->numExpiredInterestOfFace.end()){
@@ -490,6 +490,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             // else{
             //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
             // }
+            //如果瓶颈同时是边缘，则瓶颈丢掉兴趣包2s后触发numExpiredInterestOfFace++
+            if(edgeId.find(mynodeid)!=edgeId.end()){
+                if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))==numExpiredInterestOfFace.end()){
+                  numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=0;
+                }
+                ns3::Simulator::Schedule(ns3::Seconds(2), [this,ingress]{numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;});
+            }
             return;
         }
 
@@ -507,6 +514,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             // else{
             //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
             // }
+            //如果瓶颈同时是边缘，则瓶颈丢掉兴趣包2s后触发numExpiredInterestOfFace++
+            if(edgeId.find(mynodeid)!=edgeId.end()){
+                if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))==numExpiredInterestOfFace.end()){
+                  numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=0;
+                }
+                ns3::Simulator::Schedule(ns3::Seconds(2), [this,ingress]{numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;});
+            }
             return;
           }
         }
@@ -521,6 +535,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             // else{
             //   numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=1;
             // }
+            //如果瓶颈同时是边缘，则瓶颈丢掉兴趣包2s后触发numExpiredInterestOfFace++
+            if(edgeId.find(mynodeid)!=edgeId.end()){
+                if(numExpiredInterestOfFace.find(const_cast<FaceEndpoint&>(ingress))==numExpiredInterestOfFace.end()){
+                  numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]=0;
+                }
+                ns3::Simulator::Schedule(ns3::Seconds(2), [this,ingress]{numExpiredInterestOfFace[const_cast<FaceEndpoint&>(ingress)]+=1;});
+            }
             return;
           }
         }
@@ -742,6 +763,7 @@ Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
         else{
           numExpiredInterestOfFace[FaceEndpoint(inRecord.getFace(), 0)]=1;
         }
+        NFD_LOG_DEBUG("numExpiredInterestOfFace: "<<FaceEndpoint(inRecord.getFace(), 0)<< " "<<numExpiredInterestOfFace[FaceEndpoint(inRecord.getFace(), 0)]);
       }
     }
   }
