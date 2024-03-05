@@ -68,7 +68,7 @@ void computePITWDCallback(Forwarder *ptr)
     // if(ptr->count1>100){
       //if(ptr->countCPPeriod==60){
       if(ptr->countCPPeriod==10){
-        if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end()){
+        if((ptr->mynodeid==ptr->BTNkId)){
           for(auto& pair: ptr->numInterest){
               NFD_LOG_DEBUG("prefix "<<pair.first);
               NFD_LOG_DEBUG("numInterest "<<pair.second);
@@ -88,12 +88,16 @@ void computePITWDCallback(Forwarder *ptr)
               }
               if(ptr->countTime[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1000)){
                 auto faceSet=ptr->prefixFace[pair.first];
-                for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
-                  //删除所有匹配前缀为pair.first的pitEntry
-                  ptr->erasePitEntry(pair.first);
-                  NFD_LOG_DEBUG("malicious face "<<*face);
-                  ptr->maliciousFace.insert(*face);
-                }
+                // for (auto face = faceSet.begin(); face != faceSet.end(); ++face) {
+                //   //删除所有匹配前缀为pair.first的pitEntry
+                //   ptr->erasePitEntry(pair.first);
+                //   NFD_LOG_DEBUG("malicious face "<<*face);
+                //   ptr->maliciousFace.insert(*face);
+                // }
+                //删除所有匹配前缀为pair.first的pitEntry
+                ptr->erasePitEntry(pair.first);
+                  NFD_LOG_DEBUG("malicious prefix "<<pair.first);
+                  ptr->maliciousPrefix.insert(pair.first);
               }
               
           }
@@ -359,8 +363,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 
         numInterest[prefix]+=1;
 
-        if(maliciousFace.find(ingress)!=maliciousFace.end()){
-          NFD_LOG_DEBUG("maliciousFace, discard");
+        if(maliciousPrefix.find(prefix)!=maliciousPrefix.end()){
+          NFD_LOG_DEBUG("maliciousPrefix, discard");
           return;
         }
 
