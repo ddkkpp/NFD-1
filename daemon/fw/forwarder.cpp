@@ -261,9 +261,15 @@ void computePITWDCallback(Forwarder *ptr)
         //第一重判断恶意端口
 
         if(ptr->countTime1[pair.first]==0){
-          if((ptr->numExpiredInterestOfFace[pair.first] > ptr->ExpiredInterestLimit) && (ptr->ISR[pair.first] < ptr->ISRThreshold)){
-            ptr->countTime1[pair.first]=1;
-            NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
+          if((ptr->numExpiredInterestOfFace[pair.first] > ptr->ExpiredInterestLimit) && (ptr->ISR[pair.first] < ptr->ISRThreshold)&& (ptr->ISR[pair.first]!=0)){
+            //连续两次判断为suspect
+            if(ptr->previousSuspect.find(pair.first)==ptr->previousSuspect.end()){
+              ptr->previousSuspect[pair.first]=true;
+            }
+            else{
+              ptr->countTime1[pair.first]=1;
+              NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
+            }
           }
         }
         else{

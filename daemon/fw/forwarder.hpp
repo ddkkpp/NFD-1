@@ -233,6 +233,7 @@ public:
   std::set<FaceEndpoint> suspectFace1;//第一原因可疑端口
   std::set<FaceEndpoint> suspectFace2;//第二原因可疑端口
   std::set<FaceEndpoint> maliciousFace;//恶意端口
+  std::map<FaceEndpoint, bool> previousSuspect;
   
   std::map<std::string, std::set<FaceEndpoint>> prefixFace;//每个前缀兴趣包的入端口
   //大拓扑
