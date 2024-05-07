@@ -261,15 +261,19 @@ void computePITWDCallback(Forwarder *ptr)
         //第一重判断恶意端口
 
         if(ptr->countTime1[pair.first]==0){
-          if((ptr->numExpiredInterestOfFace[pair.first] > ptr->ExpiredInterestLimit) && (ptr->ISR[pair.first] < ptr->ISRThreshold)&& (ptr->ISR[pair.first]!=0)){
-            //连续两次判断为suspect
-            if(ptr->previousSuspect.find(pair.first)==ptr->previousSuspect.end()){
+          //排除开始发送没有数据返回阶段的影响
+          if((ptr->numExpiredInterestOfFace[pair.first] > ptr->ExpiredInterestLimit) && (ptr->ISR[pair.first] < ptr->ISRThreshold)&& (ptr->ISR[pair.first]!=0)&& (ptr->numInterestOfFace[pair.first]!=0)&&((ptr->numDataOfFace[pair.first]!=0))){
+            //连续2次判断为suspect,因为不是一直发送，所以攻击者可能小时隙的ISR统计里一会很低很高
+            if(ptr->previousSuspect[pair.first]==false){
               ptr->previousSuspect[pair.first]=true;
             }
             else{
               ptr->countTime1[pair.first]=1;
               NFD_LOG_DEBUG("countTime1: "<<ptr->countTime1[pair.first]);
             }
+          }
+          else{
+              ptr->previousSuspect[pair.first]=false;
           }
         }
         else{
