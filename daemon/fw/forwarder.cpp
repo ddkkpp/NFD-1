@@ -187,21 +187,34 @@ void computePITWDCallback(Forwarder *ptr)
             else{
               ptr->ISR[pair.first] = 1;
             }
-            if(ptr->countTime[pair.first]==0){
-              if(((ptr->ISR[pair.first] < ptr->ISRThreshold))&&(ptr->rate[pair.first]>300)){
-                ptr->countTime[pair.first]=1;
+            //瓶颈节点才判断恶意
+            if(ptr->mynodeid==ptr->BTNkId){
+              if(ptr->countTime[pair.first]==0){
+                //排除开始发送没有数据返回阶段的影响
+                if(((ptr->ISR[pair.first] < ptr->ISRThreshold))&&(ptr->rate[pair.first]>300)&& (ptr->numInterest[pair.first]!=0)&&((ptr->numData[pair.first]!=0))&&(ptr->ISR[pair.first] != 0)){
+                  //连续2次判断为suspect,因为不是一直发送，所以攻击者可能小时隙的ISR统计里一会很低很高
+                  if(ptr->previousSuspect[pair.first]==false){
+                    ptr->previousSuspect[pair.first]=true;
+                  }
+                  else{
+                    ptr->countTime[pair.first]=1;
+                    NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
+                  }
+                }
+                else{
+                  ptr->previousSuspect[pair.first]=false;
+                }
+              }
+              else{
+                ptr->countTime[pair.first]++;
                 NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
               }
-            }
-            else{
-              ptr->countTime[pair.first]++;
-              NFD_LOG_DEBUG("countTime: "<<ptr->countTime[pair.first]);
-            }
-            if(ptr->countTime[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1900)){
-                //删除所有匹配前缀为pair.first的pitEntry
-                ptr->erasePitEntry(pair.first);
-                ptr->maliciousPrefix.insert(pair.first);
-                NFD_LOG_DEBUG("maliciousPrefix: "<<pair.first);
+              if(ptr->countTime[pair.first] * 10 * ptr->watchdogPeriod == ns3::MilliSeconds(1900)){
+                  //删除所有匹配前缀为pair.first的pitEntry
+                  ptr->erasePitEntry(pair.first);
+                  ptr->maliciousPrefix.insert(pair.first);
+                  NFD_LOG_DEBUG("maliciousPrefix: "<<pair.first);
+              }
             }
 
             ptr->numInterest[pair.first]=0;
@@ -324,9 +337,9 @@ Forwarder::~Forwarder() = default;
 
 void Forwarder::erasePitEntry(const Name& prefix) {
   for(auto it = m_pit.begin(); it != m_pit.end(); ) {
-    NFD_LOG_DEBUG("pit size: "<<m_pit.size());
+    //NFD_LOG_DEBUG("pit size: "<<m_pit.size());
     if(it->getName().getPrefix(1) == prefix) {
-      NFD_LOG_DEBUG("yes "<<it->getName());
+      //NFD_LOG_DEBUG("yes "<<it->getName());
       auto e=&(*it);
       ++it;
       auto entry=const_cast<pit::Entry*>(e);
@@ -335,16 +348,16 @@ void Forwarder::erasePitEntry(const Name& prefix) {
       totalPit--;
       usePit[prefix.toUri()]--;
     } else {
-      NFD_LOG_DEBUG("no "<<it->getName());
+      //NFD_LOG_DEBUG("no "<<it->getName());
       ++it;
     }
   }
 //下次调用该函数时，遍历不完全（未解决）
   NFD_LOG_DEBUG("iterate again");
   for(auto it = m_pit.begin(); it != m_pit.end(); ) {
-    NFD_LOG_DEBUG("pit size: "<<m_pit.size());
+    //NFD_LOG_DEBUG("pit size: "<<m_pit.size());
     if(it->getName().getPrefix(1) == prefix) {
-      NFD_LOG_DEBUG("yes "<<it->getName());
+      //NFD_LOG_DEBUG("yes "<<it->getName());
       auto e=&(*it);
       ++it;
       auto entry=const_cast<pit::Entry*>(e);
@@ -353,7 +366,7 @@ void Forwarder::erasePitEntry(const Name& prefix) {
       totalPit--;
       usePit[prefix.toUri()]--;
     } else {
-      NFD_LOG_DEBUG("no "<<it->getName());
+      //NFD_LOG_DEBUG("no "<<it->getName());
       ++it;
     }
   }
