@@ -26,6 +26,7 @@
 #include "strategy.hpp"
 #include "forwarder.hpp"
 #include "common/logger.hpp"
+#include "common/global.hpp"
 
 #include <ndn-cxx/lp/pit-token.hpp>
 
@@ -193,14 +194,51 @@ Strategy::satisfyInterest(const shared_ptr<pit::Entry>& pitEntry,
 }
 
 
+
 void
 Strategy::afterContentStoreHit(const Data& data, const FaceEndpoint& ingress,
-                               const shared_ptr<pit::Entry>& pitEntry)
+                               const shared_ptr<pit::Entry>& pitEntry, bool needVerifyDelay)
 {
     NFD_LOG_DEBUG("afterContentStoreHit pitEntry=" << pitEntry->getName()
                   << " in=" << ingress << " data=" << data.getName());
+    if(needVerifyDelay){
+        shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
 
-    this->sendData(data, ingress.face, pitEntry);
+        shared_ptr<lp::PitToken> pitToken;
+        auto inRecord = pitEntry->getInRecord(ingress.face);
+        if (inRecord != pitEntry->in_end()) {
+          pitToken = inRecord->getInterest().getTag<lp::PitToken>();
+        }
+
+        // delete the PIT entry's in-record based on egress,
+        // since the Data is sent to the face from which the Interest was received
+        pitEntry->deleteInRecord(ingress.face);
+
+        if (pitToken != nullptr) {
+          Data data2 = data; // make a copy so each downstream can get a different PIT token
+          data2.setTag(pitToken);
+          shared_ptr<Data> data3 = make_shared<Data>(data2);
+           getScheduler().schedule(ndn::time::milliseconds(4), [ingress,data3,this] {m_forwarder.onOutgoingData(*data3, ingress.face);});
+           return;
+          //return m_forwarder.onOutgoingData(data2, egress);
+        }
+        //m_forwarder.onOutgoingData(data, egress);
+
+        if (pitEntry->getInRecords().empty()) { // if nothing left, "closing down" the entry
+          // set PIT expiry timer to now
+          m_forwarder.setExpiryTimer(pitEntry, 0_ms);
+
+          // mark PIT satisfied
+          pitEntry->isSatisfied = true;
+        }
+      // getScheduler().schedule(ndn::time::milliseconds(4), [ingress,data1,&pitEntry,this] {sendData(*data1, ingress.face, pitEntry);});
+      getScheduler().schedule(ndn::time::microseconds(4900), [ingress,data1,this] {m_forwarder.onOutgoingData(*data1, ingress.face);});
+    }
+    else{
+      this->sendData(data, ingress.face, pitEntry);
+    }
+    
+    //this->sendData(data, ingress.face, pitEntry);
 }
 
 void

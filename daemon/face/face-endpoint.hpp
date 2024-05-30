@@ -61,10 +61,11 @@ public:
   bool isTarget=false;//该端口是否正在探测
   size_t nReceiveInvalidProbeData=0;//探测为假的数据包个数
   size_t nReceiveTotalProbeData=0;//探测数据包总个数
-  size_t nSendTotalProbe=10;//发送总的探测包数量
+  size_t nSendTotalProbe=11;//发送总的探测包数量
   double rateofReceivetoSend=0.9;
   bool receiveEnoughProbe=false;
   bool isMalicious=false;
+  bool finishProbing=false;
   std::deque<::ndn::Name> cachedContentName;
   //std::set<::ndn::Name> cachedContentName;
 

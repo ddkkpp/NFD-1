@@ -86,7 +86,7 @@ CsManager::erase(const ControlParameters& parameters,
       body.setCount(nErased);
       if (nErased == ERASE_LIMIT && count > ERASE_LIMIT) {
         m_cs.find(Interest(parameters.getName()).setCanBePrefix(true),
-          [=] (const Interest&, const Data&) mutable {
+          [=] (const Interest&, const Data&, bool needVerifyTime) mutable {
             body.setCapacity(ERASE_LIMIT);
             done(ControlResponse(200, "OK").setBody(body.wireEncode()));
           },

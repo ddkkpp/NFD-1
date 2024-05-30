@@ -74,6 +74,11 @@ MalBestRouteStrategy2::afterReceiveInterest(const Interest& interest, const Face
   const fib::Entry& fibEntry = this->lookupFib(*pitEntry);
   const fib::NextHopList& nexthops = fibEntry.getNextHops();
   auto it = nexthops.end();
+  auto it2 = nexthops.end();
+  auto it3 = nexthops.end();
+  auto nexthops_size = nexthops.size();
+  int nexthop_seq=1;
+  auto p=double(rand())/double(RAND_MAX);
 
   if (suppression == RetxSuppressionResult::NEW) {
     // forward to nexthop with lowest cost except downstream
@@ -95,6 +100,56 @@ MalBestRouteStrategy2::afterReceiveInterest(const Interest& interest, const Face
     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
     this->sendInterest(interest, outFace, pitEntry);
     return;
+    // if(it != nexthops.end()){
+    //   it2 = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
+    //     return isNextHopEligible(ingress.face, interest, nexthop, pitEntry)&&(nexthop.getFace().getId()!=it->getFace().getId());
+    //   });
+    // }
+    // if(it2 != nexthops.end()){
+    //   it3 = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
+    //     return isNextHopEligible(ingress.face, interest, nexthop, pitEntry)&&(nexthop.getFace().getId()!=it->getFace().getId())&&(nexthop.getFace().getId()!=it2->getFace().getId());
+    //   });
+    // }
+    // if(it2 == nexthops.end()){//如果只有一个有效下一跳
+    //     Face& outFace = it->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    // }
+    // else if(it2 != nexthops.end() && it3 == nexthops.end()){//如果有两个有效下一跳
+    //   if(p<=0.75){
+    //     Face& outFace = it->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    //   else{
+    //     Face& outFace = it2->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    // }
+    // else{
+    //   if(p<=0.5){
+    //     Face& outFace = it->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    //   else if(p<0.83){
+    //     Face& outFace = it2->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    //   else{
+    //     Face& outFace = it3->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    // }
   }
 
   // find an unused upstream with lowest cost except downstream
@@ -192,5 +247,19 @@ MalBestRouteStrategy2::sendData(const Data& data, Face& egress, const shared_ptr
     return Strategy::sendData(*data1, egress, pitEntry);
 }
 
+void
+MalBestRouteStrategy2::afterContentStoreHit(const Data& data, const FaceEndpoint& ingress,
+                               const shared_ptr<pit::Entry>& pitEntry, bool needVerifyDelay)
+{
+    shared_ptr<Data> data1 = make_shared<Data>(const_cast<Data&>(data));
+    shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
+    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
+
+    data1->setSignatureInfo(*signatureInfo1);
+    NFD_LOG_DEBUG("afterReceiveData, modify signature maliciously, data=" << data.getName());
+    NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
+
+    Strategy::afterContentStoreHit(*data1,ingress,pitEntry, needVerifyDelay);
+}
 } // namespace fw
 } // namespace nfd

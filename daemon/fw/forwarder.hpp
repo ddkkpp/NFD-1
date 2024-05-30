@@ -39,12 +39,15 @@
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
+#include "ns3/watchdog.h"
+#include "ns3/nstime.h"
 #include "ns3/random-variable-stream.h"
 #include <map>
 #include <set>
 #include <vector>
 #include "ndn-cxx/util/scheduler.hpp"
 #include "ns3/simulator.h"
+#include <chrono>  
 #include <boost/bimap.hpp>//必须放在最后include，不然error:reference to ‘_1’ is ambiguous,extern const _Placeholder<3> _3;
 
 namespace nfd {
@@ -143,6 +146,11 @@ public:
   setConfigFile(ConfigFile& configFile);
 
 public:
+    size_t goodhit=0;
+  size_t badhit=0;
+  size_t verificationTimes=0;
+   ns3::Watchdog computeVerifyTimesWD;
+   size_t unit_sequence=0;
   /** \brief trigger before PIT entry is satisfied
    *  \sa Strategy::beforeSatisfyInterest
    */
@@ -184,7 +192,7 @@ NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   */
   NFD_VIRTUAL_WITH_TESTS void
   onContentStoreHit(const Interest& interest, const FaceEndpoint& ingress,
-                    const shared_ptr<pit::Entry>& pitEntry, const Data& data);
+                   const shared_ptr<pit::Entry>& pitEntry, const Data& data, bool needVerifyTime);
 
   /** \brief outgoing Interest pipeline
    *  \return A pointer to the out-record created or nullptr if the Interest was dropped
@@ -253,6 +261,8 @@ private:
   processConfig(const ConfigSection& configSection, bool isDryRun,
                 const std::string& filename);
 
+  void SetWatchDog(double t);
+
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   /**
    * \brief Configuration options from "forwarder" section
@@ -281,8 +291,8 @@ private:
   NetworkRegionTable m_networkRegionTable;
   shared_ptr<Face>   m_csFace;
   cuckoofilter::CuckooFilter<uint64_t, 12> dataFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(10000);
-  cuckoofilter::CuckooFilter<uint64_t, 12> probeFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(20);
-  size_t nSendTotalProbe=10;//发送总的探测包数量
+  cuckoofilter::CuckooFilter<uint64_t, 12> probeFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(500);//设置大一点避免查询假阴性
+  size_t nSendTotalProbe=11;//发送总的探测包数量
   uint32_t ei_now=0; 
   boost::bimap<FaceEndpoint,uint32_t> face_ei;//存储face和ei的对应关系
   std::set<FaceEndpoint> face_info;//存储可修改（删除然后插入）的FaceInfo
@@ -290,10 +300,11 @@ private:
   bool allFaceReceiveEnoughProbe=false;
   bool m_isHonest=true;
   ::ns3::Ptr<::ns3::UniformRandomVariable> m_rand;
-  size_t deque_capacity=11;//反馈的包不能用于探测，因为不在邻居缓存中
+  size_t deque_capacity=12;//反馈的包不能用于探测，因为不在邻居缓存中
   //face::Face& laterFbFace;
   std::vector<ndn::Interest> laterFeedback;
   bool finishProbing=false;
+  //chrono::system_clock::time_point start_time, end_time; 
   //ndn::Scheduler s;
 
 

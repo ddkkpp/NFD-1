@@ -30,6 +30,7 @@
 #include <ndn-cxx/lp/tags.hpp>
 #include "cuckoofilter/cuckoofilter.h"
 #include <string>
+#include "common/global.hpp"
 
 namespace nfd {
 namespace cs {
@@ -98,10 +99,12 @@ public:
 
     //hpp文件无法使用NFD_LOG，所以在cpp中实现
     csVerify(data1);
-
-
-
-    hit(interest, *data1);
+    if(inFilter){
+         hit(interest, *data1, false);
+    }
+    else{
+      hit(interest, *data1, true);
+    }
   }
 
   /** \brief get number of stored packets
@@ -213,6 +216,7 @@ private:
   bool m_shouldAdmit = true; ///< if false, no Data will be admitted
   bool m_shouldServe = true; ///< if false, all lookups will miss
   cuckoofilter::CuckooFilter<uint64_t, 12> hasVerifiedFilter=cuckoofilter::CuckooFilter<uint64_t, 12>(10000);
+  bool inFilter=false;
 };
 
 } // namespace cs

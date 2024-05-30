@@ -198,9 +198,11 @@ Cs::csVerify(shared_ptr<ndn::Data> data1)
 
     //只插入seq，不适用于为网络存在多个prefix的情况
   if(hasVerifiedFilter.Contain(seq, ei)==0){
+    inFilter=true;
       NFD_LOG_DEBUG("命中缓存在过滤器中找到，无需验证"<<seq);
   }
   else{
+    inFilter=false;
     NFD_LOG_DEBUG("命中缓存没有在过滤器中找到，需要验证"<<seq);
     data1->setTag(make_shared<ndn::lp::ExtraDelayTag>(4));//一次验证4ms（验证公钥和验证签名）
   }

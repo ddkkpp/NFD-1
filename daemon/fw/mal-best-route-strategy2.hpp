@@ -84,6 +84,10 @@ public:
                             std::set<std::pair<Face*, EndpointId>>& satisfiedDownstreams,
                             std::set<std::pair<Face*, EndpointId>>& unsatisfiedDownstreams) override;
 
+   void
+  afterContentStoreHit(const Data& data, const FaceEndpoint& ingress,
+                               const shared_ptr<pit::Entry>& pitEntry, bool needVerifyDelay) override;
+
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_INITIAL;
   static const time::milliseconds RETX_SUPPRESSION_MAX;

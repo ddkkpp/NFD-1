@@ -74,6 +74,10 @@ BestRouteStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
   const fib::Entry& fibEntry = this->lookupFib(*pitEntry);
   const fib::NextHopList& nexthops = fibEntry.getNextHops();
   auto it = nexthops.end();
+  auto it2 = nexthops.end();
+  auto it3 = nexthops.end();
+  auto p=double(rand())/double(RAND_MAX);
+  NFD_LOG_DEBUG("p="<<p);
 
   if (suppression == RetxSuppressionResult::NEW) {
     // forward to nexthop with lowest cost except downstream
@@ -95,6 +99,63 @@ BestRouteStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
     this->sendInterest(interest, outFace, pitEntry);
     return;
+
+    // if(it != nexthops.end()){
+    //   it2 = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
+    //     return isNextHopEligible(ingress.face, interest, nexthop, pitEntry)&&(nexthop.getFace().getId()!=it->getFace().getId());
+    //   });
+    // }
+    // if(it2 != nexthops.end()){
+    //   it3 = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
+    //     return isNextHopEligible(ingress.face, interest, nexthop, pitEntry)&&(nexthop.getFace().getId()!=it->getFace().getId())&&(nexthop.getFace().getId()!=it2->getFace().getId());
+    //   });
+    // }
+    // if(it2 == nexthops.end()){//如果只有一个有效下一跳
+    //     NFD_LOG_DEBUG("1 nexthop");
+    //     Face& outFace = it->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    // }
+    // else if(it2 != nexthops.end() && it3 == nexthops.end()){//如果有两个有效下一跳
+    //   NFD_LOG_DEBUG("2 nexthop");
+    //   if(p<=0.8){
+    //     Face& outFace = it->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    //   else{
+    //     Face& outFace = it2->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    // }
+    // else{
+    //     NFD_LOG_DEBUG("3 nexthop");
+    //     NFD_LOG_DEBUG(" face" << it->getFace().getId());
+    //     NFD_LOG_DEBUG(" face" << it2->getFace().getId());
+    //     NFD_LOG_DEBUG(" face" << it3->getFace().getId());
+    //   if(p<=0.8){
+    //     Face& outFace = it->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    //   else if(p<=1){
+    //     Face& outFace = it2->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    //   else{
+    //     Face& outFace = it3->getFace();
+    //     NFD_LOG_DEBUG(interest << " from=" << ingress << " newPitEntry-to=" << outFace.getId());
+    //     this->sendInterest(interest, outFace, pitEntry);
+    //     return;
+    //   }
+    // }
   }
 
   // find an unused upstream with lowest cost except downstream
