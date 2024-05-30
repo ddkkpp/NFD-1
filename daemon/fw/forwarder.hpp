@@ -40,12 +40,14 @@
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
+#include "ns3/nstime.h"
 #include "ns3/random-variable-stream.h"
 #include <map>
 #include <set>
 #include <vector>
 #include "ndn-cxx/util/scheduler.hpp"
 #include "ns3/simulator.h"
+#include "ns3/watchdog.h"
 #include <boost/bimap.hpp>//必须放在最后include，不然error:reference to ‘_1’ is ambiguous,extern const _Placeholder<3> _3;
 
 namespace nfd {
@@ -150,6 +152,13 @@ public:
   setConfigFile(ConfigFile& configFile);
 
 public:
+
+
+  size_t verificationTimes=0;
+  size_t goodhit=0;
+  size_t badhit=0;
+   ns3::Watchdog computeVerifyTimesWD;
+   size_t unit_sequence=0;
   /** \brief trigger before PIT entry is satisfied
    *  \sa Strategy::beforeSatisfyInterest
    */
@@ -191,7 +200,7 @@ NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   */
   NFD_VIRTUAL_WITH_TESTS void
   onContentStoreHit(const Interest& interest, const FaceEndpoint& ingress,
-                    const shared_ptr<pit::Entry>& pitEntry, const Data& data);
+                   const shared_ptr<pit::Entry>& pitEntry, const Data& data, bool needVerifyTime);
 
   /** \brief outgoing Interest pipeline
    *  \return A pointer to the out-record created or nullptr if the Interest was dropped
@@ -260,6 +269,8 @@ private:
   processConfig(const ConfigSection& configSection, bool isDryRun,
                 const std::string& filename);
 
+  void SetWatchDog(double t);
+  
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   /**
    * \brief Configuration options from "forwarder" section

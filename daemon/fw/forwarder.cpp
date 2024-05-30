@@ -32,6 +32,9 @@
 #include "common/global.hpp"
 #include "common/logger.hpp"
 #include "table/cleanup.hpp"
+#include <iostream>
+#include <fstream>
+#include <chrono>  
 
 #include <ndn-cxx/lp/pit-token.hpp>
 #include <ndn-cxx/lp/tags.hpp>
@@ -92,13 +95,15 @@ Forwarder::Forwarder(FaceTable& faceTable)
   });
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
+  
+  SetWatchDog(500);
 }
 
 Forwarder::~Forwarder() = default;
 
 void
 Forwarder::probe(const Interest& interest, const FaceEndpoint& ingress){
-  NFD_LOG_DEBUG("start probing");
+  //NFD_LOG_DEBUG("start probing");
   auto it = face_info.find(const_cast<FaceEndpoint&>(ingress));
   //由于F分布临界值没有直接的函数实现，所以之后直接使用预计算的恶意临界值（10个包中，恶意包为0或1则判定为诚实），这里的nSendTotalProbe如果改变后，后面的判定恶意的代码也要改变
   for(auto i=it->cachedContentName.rbegin();i!=it->cachedContentName.rend();i++)
@@ -109,14 +114,14 @@ Forwarder::probe(const Interest& interest, const FaceEndpoint& ingress){
     shared_ptr<Interest> probe = make_shared<Interest>();
     uint32_t nonce=rand()%(std::numeric_limits<uint32_t>::max()-1);
     probe->setNonce(nonce);
-    NFD_LOG_DEBUG("set nouce");
+    //NFD_LOG_DEBUG("set nouce");
     probe->setName(*nameWithSequence);
-    NFD_LOG_DEBUG("probe is"<<probe->getName());
+    //NFD_LOG_DEBUG("probe is"<<probe->getName());
     
     ingress.face.sendInterest(*probe);
     auto seq=probe->getName().get(1).toSequenceNumber();
     probeFilter.Add(seq,0);//记录probe的name
-    NFD_LOG_DEBUG("add to probefilter: "<<seq);
+    //NFD_LOG_DEBUG("add to probefilter: "<<seq);
     }
   }
   
@@ -126,15 +131,14 @@ void
 Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingress)
 {
   // receive Interest
-  NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
+  //NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
   interest.setTag(make_shared<lp::IncomingFaceIdTag>(ingress.face.getId()));
   ++m_counters.nInInterests;
 
   // drop if HopLimit zero, decrement otherwise (if present)
   if (interest.getHopLimit()) {
     if (*interest.getHopLimit() == 0) {
-      NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName()
-                    << " hop-limit=0");
+      //NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName()<< " hop-limit=0");
       ++ingress.face.getCounters().nInHopLimitZero;
       // drop
       return;
@@ -146,8 +150,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   bool isViolatingLocalhost = ingress.face.getScope() == ndn::nfd::FACE_SCOPE_NON_LOCAL &&
                               scope_prefix::LOCALHOST.isPrefixOf(interest.getName());
   if (isViolatingLocalhost) {
-    NFD_LOG_DEBUG("onIncomingInterest in=" << ingress
-                  << " interest=" << interest.getName() << " violates /localhost");
+    //NFD_LOG_DEBUG("onIncomingInterest in=" << ingress<< " interest=" << interest.getName() << " violates /localhost");
     // drop
     return;
   }
@@ -163,8 +166,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   // strip forwarding hint if Interest has reached producer region
   if (!interest.getForwardingHint().empty() &&
       m_networkRegionTable.isInProducerRegion(interest.getForwardingHint())) {
-    NFD_LOG_DEBUG("onIncomingInterest in=" << ingress
-                  << " interest=" << interest.getName() << " reaching-producer-region");
+    //NFD_LOG_DEBUG("onIncomingInterest in=" << ingress<< " interest=" << interest.getName() << " reaching-producer-region");
     const_cast<Interest&>(interest).setForwardingHint({});
   }
 
@@ -187,13 +189,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 
   //is pending?
   if (!pitEntry->hasInRecords()) {
-    NFD_LOG_DEBUG("没有PIT");
+    //NFD_LOG_DEBUG("没有PIT");
     m_cs.find(interest,
-              [=] (const Interest& i, const Data& d) { onContentStoreHit(i, ingress, pitEntry, d); },
+              [=] (const Interest& i, const Data& d, bool needVerifyTime) { onContentStoreHit(i, ingress, pitEntry, d, needVerifyTime); },
               [=] (const Interest& i) { onContentStoreMiss(i, ingress, pitEntry); });
   }
   else {
-    NFD_LOG_DEBUG("有PIT");
+    //NFD_LOG_DEBUG("有PIT");
     this->onContentStoreMiss(interest, ingress, pitEntry);
   }
 }
@@ -203,13 +205,11 @@ Forwarder::onInterestLoop(const Interest& interest, const FaceEndpoint& ingress)
 {
   // if multi-access or ad hoc face, drop
   if (ingress.face.getLinkType() != ndn::nfd::LINK_TYPE_POINT_TO_POINT) {
-    NFD_LOG_DEBUG("onInterestLoop in=" << ingress
-                  << " interest=" << interest.getName() << " drop");
+    //NFD_LOG_DEBUG("onInterestLoop in=" << ingress<< " interest=" << interest.getName() << " drop");
     return;
   }
 
-  NFD_LOG_DEBUG("onInterestLoop in=" << ingress << " interest=" << interest.getName()
-                << " send-Nack-duplicate");
+  //NFD_LOG_DEBUG("onInterestLoop in=" << ingress << " interest=" << interest.getName()<< " send-Nack-duplicate");
 
   // send Nack with reason=DUPLICATE
   // note: Don't enter outgoing Nack pipeline because it needs an in-record.
@@ -222,7 +222,7 @@ void
 Forwarder::onContentStoreMiss(const Interest& interest, const FaceEndpoint& ingress,
                               const shared_ptr<pit::Entry>& pitEntry)
 {
-  NFD_LOG_DEBUG("onContentStoreMiss interest=" << interest.getName());
+  //NFD_LOG_DEBUG("onContentStoreMiss interest=" << interest.getName());
   ++m_counters.nCsMisses;
   afterCsMiss(interest);
 
@@ -248,8 +248,7 @@ Forwarder::onContentStoreMiss(const Interest& interest, const FaceEndpoint& ingr
     // chosen NextHop face exists?
     Face* nextHopFace = m_faceTable.get(*nextHopTag);
     if (nextHopFace != nullptr) {
-      NFD_LOG_DEBUG("onContentStoreMiss interest=" << interest.getName()
-                    << " nexthop-faceid=" << nextHopFace->getId());
+      //NFD_LOG_DEBUG("onContentStoreMiss interest=" << interest.getName()<< " nexthop-faceid=" << nextHopFace->getId());
       // go to outgoing Interest pipeline
       // scope control is unnecessary, because privileged app explicitly wants to forward
       this->onOutgoingInterest(interest, *nextHopFace, pitEntry);
@@ -264,9 +263,19 @@ Forwarder::onContentStoreMiss(const Interest& interest, const FaceEndpoint& ingr
 
 void
 Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingress,
-                             const shared_ptr<pit::Entry>& pitEntry, const Data& data)
+                             const shared_ptr<pit::Entry>& pitEntry, const Data& data, bool needVerifyTime)
 {
-  NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
+  if(data.getSignatureInfo().getSignatureType()==255){
+    goodhit++;
+  }
+  else{
+    badhit++;
+  }
+  if(needVerifyTime){
+    ++verificationTimes;
+    //NFD_LOG_DEBUG(verificationTimes);
+  }
+  //NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
   ++m_counters.nCsHits;
   afterCsHit(interest, data);
 
@@ -284,7 +293,7 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
   m_strategyChoice.findEffectiveStrategy(*pitEntry).beforeSatisfyInterest(data, FaceEndpoint(*m_csFace, 0), pitEntry);
 
   // dispatch to strategy: after Content Store hit
-  m_strategyChoice.findEffectiveStrategy(*pitEntry).afterContentStoreHit(data, ingress, pitEntry);
+ m_strategyChoice.findEffectiveStrategy(*pitEntry).afterContentStoreHit(data, ingress, pitEntry, needVerifyTime);
 }
 
 pit::OutRecord*
@@ -293,13 +302,12 @@ Forwarder::onOutgoingInterest(const Interest& interest, Face& egress,
 {
   // drop if HopLimit == 0 but sending on non-local face
   if (interest.getHopLimit() == 0 && egress.getScope() == ndn::nfd::FACE_SCOPE_NON_LOCAL) {
-    NFD_LOG_DEBUG("onOutgoingInterest out=" << egress.getId() << " interest=" << pitEntry->getName()
-                  << " non-local hop-limit=0");
+    //NFD_LOG_DEBUG("onOutgoingInterest out=" << egress.getId() << " interest=" << pitEntry->getName()<< " non-local hop-limit=0");
     ++egress.getCounters().nOutHopLimitZero;
     return nullptr;
   }
 
-  NFD_LOG_DEBUG("onOutgoingInterest out=" << egress.getId() << " interest=" << pitEntry->getName());
+  //NFD_LOG_DEBUG("onOutgoingInterest out=" << egress.getId() << " interest=" << pitEntry->getName());
 
   // insert out-record
   auto it = pitEntry->insertOrUpdateOutRecord(egress, interest);
@@ -314,8 +322,7 @@ Forwarder::onOutgoingInterest(const Interest& interest, Face& egress,
 void
 Forwarder::onInterestFinalize(const shared_ptr<pit::Entry>& pitEntry)
 {
-  NFD_LOG_DEBUG("onInterestFinalize interest=" << pitEntry->getName()
-                << (pitEntry->isSatisfied ? " satisfied" : " unsatisfied"));
+  //NFD_LOG_DEBUG("onInterestFinalize interest=" << pitEntry->getName()<< (pitEntry->isSatisfied ? " satisfied" : " unsatisfied"));
 
   if (!pitEntry->isSatisfied) {
     beforeExpirePendingInterest(*pitEntry);
@@ -341,10 +348,10 @@ void
 Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 {  
   // receive Data
-  NFD_LOG_DEBUG("onIncomingData in=" << ingress << " data=" << data.getName());
+  //NFD_LOG_DEBUG("onIncomingData in=" << ingress << " data=" << data.getName());
   
   if(data.getSignatureInfo().getSignatureType()==100){
-    NFD_LOG_DEBUG("Kim方案:丢弃验证过的假包");
+    //NFD_LOG_DEBUG("Kim方案:丢弃验证过的假包");
     return;
   }
 
@@ -355,7 +362,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   bool isViolatingLocalhost = ingress.face.getScope() == ndn::nfd::FACE_SCOPE_NON_LOCAL &&
                               scope_prefix::LOCALHOST.isPrefixOf(data.getName());
   if (isViolatingLocalhost) {
-    NFD_LOG_DEBUG("onIncomingData in=" << ingress << " data=" << data.getName() << " violates /localhost");
+    //NFD_LOG_DEBUG("onIncomingData in=" << ingress << " data=" << data.getName() << " violates /localhost");
     // drop
     return;
   }
@@ -383,9 +390,9 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   //       ++count;
   //   }
   // }
-  // NFD_LOG_DEBUG("Te_sum = "<<Te<<", count = "<<count);
+  // //NFD_LOG_DEBUG("Te_sum = "<<Te<<", count = "<<count);
   // Te=Te/count;
-  // NFD_LOG_DEBUG("Te = "<<Te);
+  // //NFD_LOG_DEBUG("Te = "<<Te);
 
   // for (const auto& pitEntry : m_pit) {
   //   for(const auto& outRecord:pitEntry.getOutRecords()){
@@ -393,39 +400,42 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   //       ++count_ba;
   //   }
   // }
-  // NFD_LOG_DEBUG("Te_ba_sum = "<<Te_ba<<", count_ba = "<<count_ba);
+  // //NFD_LOG_DEBUG("Te_ba_sum = "<<Te_ba<<", count_ba = "<<count_ba);
   // Te_ba=Te_ba/count_ba;
-  // NFD_LOG_DEBUG("Te_ba = "<<Te_ba);
+  // //NFD_LOG_DEBUG("Te_ba = "<<Te_ba);
 
   // if(Te.count()<=std::min(Te_ba.count(),Tmax.count()/2)){
-  //   NFD_LOG_DEBUG("p=1");
+  //   //NFD_LOG_DEBUG("p=1");
   //   p=1;
   // }
   // else if((Te.count()>std::min(Te_ba.count(),Tmax.count()/2))&&(Te.count()<=std::max(Te_ba.count(),Tmax.count()/2))){
   //   p=1-double(Te.count()) / double(Tmax.count());
-  //   NFD_LOG_DEBUG("p=1-Te/Tmax= "<<p);
+  //   //NFD_LOG_DEBUG("p=1-Te/Tmax= "<<p);
   // }
   // else if((Te.count()>std::max(Te_ba.count(),Tmax.count()/2))&&(Te.count()<Tmax.count())){
   //   p=pow((1-double(Te.count()) / double(Tmax.count())),2);
-  //   NFD_LOG_DEBUG("p=(1-Te/Tmax)**2== "<<p);
+  //   //NFD_LOG_DEBUG("p=(1-Te/Tmax)**2== "<<p);
   // }
   // else{
-  //   NFD_LOG_DEBUG("p=0");
+  //   //NFD_LOG_DEBUG("p=0");
   //   p=0;
   // }
 
   // if((rand()/RAND_MAX)<p){
-  //   NFD_LOG_DEBUG("达到插入概率，可以插入");
+  //   //NFD_LOG_DEBUG("达到插入概率，可以插入");
   //   m_cs.insert(data);
   // }
   // CS insert
+
+
   m_cs.insert(data);
+
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
   std::multimap<std::pair<Face*, EndpointId>, std::shared_ptr<pit::Entry>> unsatisfiedPitEntries;
 
   for (const auto& pitEntry : pitMatches) {
-    NFD_LOG_DEBUG("onIncomingData matching=" << pitEntry->getName());
+    //NFD_LOG_DEBUG("onIncomingData matching=" << pitEntry->getName());
 
     // invoke PIT satisfy callback
     beforeSatisfyInterest(*pitEntry, ingress.face, data);
@@ -488,8 +498,12 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   shared_ptr<ndn::SignatureInfo> signatureInfo1 = make_shared<ndn::SignatureInfo>(const_cast<ndn::SignatureInfo&>(data.getSignatureInfo()));
   if(nodeType==maliciousNode)
   {
-    signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
-    NFD_LOG_DEBUG("modify signature maliciously, data=" << data.getName());
+    auto p=double(rand())/double(RAND_MAX);
+    //NFD_LOG_DEBUG("攻击p="<<p);
+    if(p<=1){
+      signatureInfo1->setSignatureType(static_cast< ::ndn::tlv::SignatureTypeValue>(1));//1表示假包
+      //NFD_LOG_DEBUG("modify signature maliciously, data=" << data.getName());
+    }
   }
   // if(nodeType==verifyNode)
   // {
@@ -502,7 +516,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   //   }
   // }
   data1->setSignatureInfo(*signatureInfo1);
-  NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
+  //NFD_LOG_DEBUG("SignatureType = "<<data1->getSignatureInfo().getSignatureType());
   
   // foreach pending downstream
   for (const auto& downstream : satisfiedDownstreams) {
@@ -525,8 +539,7 @@ Forwarder::onDataUnsolicited(const Data& data, const FaceEndpoint& ingress)
     m_cs.insert(data, true);
   }
 
-  NFD_LOG_DEBUG("onDataUnsolicited in=" << ingress << " data=" << data.getName()
-                << " decision=" << decision);
+  //NFD_LOG_DEBUG("onDataUnsolicited in=" << ingress << " data=" << data.getName()<< " decision=" << decision);
   ++m_counters.nUnsolicitedData;
 }
 
@@ -537,14 +550,13 @@ Forwarder::onOutgoingData(const Data& data, Face& egress)
     NFD_LOG_WARN("onOutgoingData out=(invalid) data=" << data.getName());
     return false;
   }
-  NFD_LOG_DEBUG("onOutgoingData out=" << egress.getId() << " data=" << data.getName());
+  //NFD_LOG_DEBUG("onOutgoingData out=" << egress.getId() << " data=" << data.getName());
 
   // /localhost scope control
   bool isViolatingLocalhost = egress.getScope() == ndn::nfd::FACE_SCOPE_NON_LOCAL &&
                               scope_prefix::LOCALHOST.isPrefixOf(data.getName());
   if (isViolatingLocalhost) {
-    NFD_LOG_DEBUG("onOutgoingData out=" << egress.getId() << " data=" << data.getName()
-                  << " violates /localhost");
+    //NFD_LOG_DEBUG("onOutgoingData out=" << egress.getId() << " data=" << data.getName()<< " violates /localhost");
     // drop
     return false;
   }
@@ -566,9 +578,7 @@ Forwarder::onIncomingNack(const lp::Nack& nack, const FaceEndpoint& ingress)
 
   // if multi-access or ad hoc face, drop
   if (ingress.face.getLinkType() != ndn::nfd::LINK_TYPE_POINT_TO_POINT) {
-    NFD_LOG_DEBUG("onIncomingNack in=" << ingress
-                  << " nack=" << nack.getInterest().getName() << "~" << nack.getReason()
-                  << " link-type=" << ingress.face.getLinkType());
+    //NFD_LOG_DEBUG("onIncomingNack in=" << ingress<< " nack=" << nack.getInterest().getName() << "~" << nack.getReason()<< " link-type=" << ingress.face.getLinkType());
     return;
   }
 
@@ -576,8 +586,7 @@ Forwarder::onIncomingNack(const lp::Nack& nack, const FaceEndpoint& ingress)
   shared_ptr<pit::Entry> pitEntry = m_pit.find(nack.getInterest());
   // if no PIT entry found, drop
   if (pitEntry == nullptr) {
-    NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()
-                  << "~" << nack.getReason() << " no-PIT-entry");
+    //NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()<< "~" << nack.getReason() << " no-PIT-entry");
     return;
   }
 
@@ -585,21 +594,17 @@ Forwarder::onIncomingNack(const lp::Nack& nack, const FaceEndpoint& ingress)
   auto outRecord = pitEntry->getOutRecord(ingress.face);
   // if no out-record found, drop
   if (outRecord == pitEntry->out_end()) {
-    NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()
-                  << "~" << nack.getReason() << " no-out-record");
+    //NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()<< "~" << nack.getReason() << " no-out-record");
     return;
   }
 
   // if out-record has different Nonce, drop
   if (nack.getInterest().getNonce() != outRecord->getLastNonce()) {
-    NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()
-                  << "~" << nack.getReason() << " wrong-Nonce " << nack.getInterest().getNonce()
-                  << "!=" << outRecord->getLastNonce());
+    //NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()<< "~" << nack.getReason() << " wrong-Nonce " << nack.getInterest().getNonce()<< "!=" << outRecord->getLastNonce());
     return;
   }
 
-  NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()
-                << "~" << nack.getReason() << " OK");
+  //NFD_LOG_DEBUG("onIncomingNack in=" << ingress << " nack=" << nack.getInterest().getName()<< "~" << nack.getReason() << " OK");
 
   // record Nack on out-record
   outRecord->setIncomingNack(nack);
@@ -628,23 +633,17 @@ Forwarder::onOutgoingNack(const lp::NackHeader& nack, Face& egress,
 
   // if no in-record found, drop
   if (inRecord == pitEntry->in_end()) {
-    NFD_LOG_DEBUG("onOutgoingNack out=" << egress.getId()
-                  << " nack=" << pitEntry->getInterest().getName()
-                  << "~" << nack.getReason() << " no-in-record");
+    //NFD_LOG_DEBUG("onOutgoingNack out=" << egress.getId()<< " nack=" << pitEntry->getInterest().getName()<< "~" << nack.getReason() << " no-in-record");
     return false;
   }
 
   // if multi-access or ad hoc face, drop
   if (egress.getLinkType() != ndn::nfd::LINK_TYPE_POINT_TO_POINT) {
-    NFD_LOG_DEBUG("onOutgoingNack out=" << egress.getId()
-                  << " nack=" << pitEntry->getInterest().getName() << "~" << nack.getReason()
-                  << " link-type=" << egress.getLinkType());
+    //NFD_LOG_DEBUG("onOutgoingNack out=" << egress.getId()<< " nack=" << pitEntry->getInterest().getName() << "~" << nack.getReason()<< " link-type=" << egress.getLinkType());
     return false;
   }
 
-  NFD_LOG_DEBUG("onOutgoingNack out=" << egress.getId()
-                << " nack=" << pitEntry->getInterest().getName()
-                << "~" << nack.getReason() << " OK");
+  //NFD_LOG_DEBUG("onOutgoingNack out=" << egress.getId()<< " nack=" << pitEntry->getInterest().getName()<< "~" << nack.getReason() << " OK");
 
   // create Nack packet with the Interest from in-record
   lp::Nack nackPkt(inRecord->getInterest());
@@ -757,6 +756,39 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
   if (!isDryRun) {
     m_config = config;
   }
+}
+
+
+void computeVerifyTimesWDCallback(Forwarder *ptr)
+{
+  if(ptr->goodhit+ptr->badhit!=0){
+    NS_LOG_DEBUG("goodhit rate= "<<double(ptr->goodhit)/(double(ptr->goodhit+ptr->badhit)));
+  }
+  ptr->goodhit=0;
+  ptr->badhit=0;
+
+  ptr->unit_sequence+=1;
+  if(ptr->verificationTimes!=0){
+    std::ofstream outFile("/home/dkp/ndnSIM_new_kim/ns-3/verificationTimes.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+
+    if (outFile.is_open()) {
+      outFile << ptr->unit_sequence << ":"<<ptr->verificationTimes<<std::endl;
+      //NS_LOG_DEBUG("m_verificationTimes in this period = "<<ptr->verificationTimes);
+      ptr->verificationTimes=0;
+      ptr->computeVerifyTimesWD.Ping(ns3::MilliSeconds(500));
+    }
+    outFile.close();
+  }
+}
+void 
+Forwarder::SetWatchDog(double t)
+{
+    if (t > 0)
+    {
+        computeVerifyTimesWD.Ping(ns3::MilliSeconds(t));
+        computeVerifyTimesWD.SetFunction(computeVerifyTimesWDCallback);
+        computeVerifyTimesWD.SetArguments<Forwarder *>(this);
+    }
 }
 
 } // namespace nfd
