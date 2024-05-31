@@ -538,7 +538,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         auto& e =const_cast<fib::Entry&>(m_fib.findLongestPrefixMatch(data.getName()));
         //m_fib.removeNextHop(e, ingress.face);
         //if(!ingress.hasdetected){
-           getScheduler().schedule(ndn::time::milliseconds(4500), [ingress,&e,this] {removefib(e, ingress.face);});
+           getScheduler().schedule(ndn::time::milliseconds(2000), [ingress,&e,this] {removefib(e, ingress.face);});
         //getScheduler().schedule(ndn::time::milliseconds(0), [&] {m_fib.removeNextHop(e, ingress.face);});
         // hasDetectedFake=true;
         // e =const_cast<fib::Entry&>(m_fib.findLongestPrefixMatch(data.getName()));
@@ -567,7 +567,9 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   //getScheduler().schedule(ndn::time::milliseconds(100), [=] { onOutgoingData(*data1, *downstream.first);});
 
     this->onOutgoingData(*data1, *downstream.first);
-  }
+  //   uint32_t del =rand()%15;
+  //   getScheduler().schedule(ndn::time::milliseconds(del), [=] { onOutgoingData(*data1, *downstream.first);});
+   }
 }
 
 void
