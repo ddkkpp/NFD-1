@@ -526,6 +526,8 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       continue;
     }
     this->onOutgoingData(*data1, *downstream.first);
+    // uint32_t del =rand()%15;
+    // getScheduler().schedule(ndn::time::milliseconds(del), [=] { onOutgoingData(*data1, *downstream.first);});
   }
 }
 
