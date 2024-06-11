@@ -222,7 +222,9 @@ void computePITWDCallback(Forwarder *ptr)
             // //是否允许使用公共pit
             // if(ptr->numInterest[pair.first]!=0){
               ptr->ISR[pair.first] = double(ptr->numData[pair.first]) / double(ptr->numInterest[pair.first]);
-              NFD_LOG_DEBUG("ISR: "<<ptr->ISR[pair.first]);
+              NFD_LOG_DEBUG("numData: "<<pair.first<<" "<<ptr->numData[pair.first]);
+              NFD_LOG_DEBUG("numInterest: "<<pair.first<<" "<<ptr->numInterest[pair.first]);
+              NFD_LOG_DEBUG("ISR: "<<pair.first<<" "<<ptr->ISR[pair.first]);
             //   if(ISR>0.9){
             //     ptr->allowUsePublicPIT[pair.first] = true;
             //     NFD_LOG_DEBUG(pair.first<<" allow use public pit");
@@ -267,19 +269,19 @@ void computePITWDCallback(Forwarder *ptr)
         NFD_LOG_DEBUG("straight totalPit: "<<ptr->totalPit);
         if(ptr->mynodeid==ptr->BTNkId){
           //添加恶意前缀
-          for (auto element : ptr->suspectPrefix) {
-              NFD_LOG_DEBUG(element);
-              NFD_LOG_DEBUG("avgDelay "<<ptr->avgDelay[element]);
-              //可疑3s之后再判断恶意
-              if(ptr->countTimeSinceSuspect[element] * 10 * ptr->watchdogPeriod > ns3::MilliSeconds(1900)){
-                if(ptr->avgDelay[element] > ptr->DH){
-                  NFD_LOG_DEBUG("maliciousPrefix "<<element);
-                  //ptr->curMaliciousPrefix.insert(element);
-                  ptr->maliciousPrefix.insert(element);
-                  ptr->curMaliciousPrefix.insert(element);
-                }
-              }
-          }
+          // for (auto element : ptr->suspectPrefix) {
+          //     NFD_LOG_DEBUG(element);
+          //     NFD_LOG_DEBUG("avgDelay "<<ptr->avgDelay[element]);
+          //     //可疑3s之后再判断恶意
+          //     if(ptr->countTimeSinceSuspect[element] * 10 * ptr->watchdogPeriod > ns3::MilliSeconds(1900)){
+          //       if(ptr->avgDelay[element] > ptr->DH){
+          //         NFD_LOG_DEBUG("maliciousPrefix "<<element);
+          //         //ptr->curMaliciousPrefix.insert(element);
+          //         ptr->maliciousPrefix.insert(element);
+          //         ptr->curMaliciousPrefix.insert(element);
+          //       }
+          //     }
+          // }
           //计算波动因子
           if(ptr->suspectPrefix.size()!=0){
             auto maliRate = double(ptr->curMaliciousPrefix.size()) / double(ptr->suspectPrefix.size());
