@@ -66,10 +66,12 @@ BestRouteStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
                                         const shared_ptr<pit::Entry>& pitEntry)
 {
   RetxSuppressionResult suppression = m_retxSuppression.decidePerPitEntry(*pitEntry);
-  if (suppression == RetxSuppressionResult::SUPPRESS) {
-    NFD_LOG_DEBUG(interest << " from=" << ingress << " suppressed");
-    return;
-  }
+  //去掉内置的防止DoS攻击的兴趣包抑制机制
+  // if (suppression == RetxSuppressionResult::SUPPRESS) {
+  //   NFD_LOG_DEBUG("RetxSuppressionResult::SUPPRESS");
+  //   NFD_LOG_DEBUG(interest << " from=" << ingress << " suppressed");
+  //   return;
+  // }
 
   const fib::Entry& fibEntry = this->lookupFib(*pitEntry);
   const fib::NextHopList& nexthops = fibEntry.getNextHops();
@@ -77,6 +79,7 @@ BestRouteStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
 
   if (suppression == RetxSuppressionResult::NEW) {
     // forward to nexthop with lowest cost except downstream
+    NFD_LOG_DEBUG("RetxSuppressionResult::NEW");
     it = std::find_if(nexthops.begin(), nexthops.end(), [&] (const auto& nexthop) {
       return isNextHopEligible(ingress.face, interest, nexthop, pitEntry);
     });
@@ -98,6 +101,7 @@ BestRouteStrategy::afterReceiveInterest(const Interest& interest, const FaceEndp
   }
 
   // find an unused upstream with lowest cost except downstream
+  NFD_LOG_DEBUG("RetxSuppressionResult::RETRANSMIT");
   it = std::find_if(nexthops.begin(), nexthops.end(),
                     [&, now = time::steady_clock::now()] (const auto& nexthop) {
                       return isNextHopEligible(ingress.face, interest, nexthop, pitEntry, true, now);

@@ -38,6 +38,29 @@
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
+#include <queue>
+#include <map>
+#include <vector>
+#include <unordered_set>
+#include <unordered_map>
+#include <set>
+#include <algorithm>
+#include <random>
+#include <iostream>
+#include <sstream>
+#include <openssl/md5.h>
+#include "ns3/watchdog.h"
+#include "ns3/nstime.h"
+#include "ns3/simulator.h"
+#include "ns3/core-module.h"
+#include "ns3/network-module.h"
+#include "ns3/point-to-point-module.h"
+#include "ns3/point-to-point-layout-module.h"
+#include "ns3/ptr.h"
+#include "ns3/net-device.h"
+#include "ns3/channel.h"
+#include "ns3/node.h"
+#include "ns3/ndnSIM/model/ndn-net-device-transport.hpp"
 
 namespace nfd {
 
@@ -149,6 +172,108 @@ public:
   /** \brief Signals when the incoming interest pipeline gets a miss from the content store
    */
   signal::Signal<Forwarder, Interest> afterCsMiss;
+
+
+
+ std::map<int, std::vector<FaceId>> 
+ runSimpleClustering(const std::vector<std::pair<FaceId, size_t>>& data, size_t xi, size_t tau);
+
+
+
+std::vector<std::vector<bool>> 
+convertToBoolSeries(const std::map<FaceId, std::vector<uint64_t>>& contentSeries, std::vector<FaceId>& faceIdList);
+
+ std::vector<int> 
+ sigGen(const std::vector<std::vector<bool>>& matrix);
+
+ std::vector<std::vector<int>> 
+ sigMatrixGen(const std::vector<std::vector<bool>>& inputMatrix, int n);
+
+ std::string 
+ computeMD5(const std::string& str);
+
+ std::map<int, std::vector<FaceId>> 
+ minHashLSH(const std::vector<std::vector<bool>>& inputMatrix, int b, int r, const std::vector<FaceId>& faceIdList);
+
+double 
+calculateVariance(const std::vector<int64_t>& data, double mean);
+
+double 
+calculateMean(const std::vector<int64_t>& data);
+
+bool 
+fTest(double var1, double var2, size_t size1, size_t size2, double alpha);
+
+bool 
+tTest(double mean1, double mean2, double var1, double var2, 
+      size_t size1, size_t size2, double alpha);
+
+void 
+performTests(std::map<int, std::vector<FaceId>>& data, 
+            const std::map<FaceId, std::vector<int64_t>>& lastIntervalSeriesOfFace, 
+            double alpha, std::set<FaceId>& finalSuspect1);
+
+void 
+performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
+
+//   struct Point {
+//       std::vector<int64_t> values;
+//       int clusterId;
+//   };
+
+//  double 
+//  euclideanDistance(const std::vector<int64_t>& a, const std::vector<int64_t>& b);
+
+//  double 
+//  vectorNorm(const std::vector<int64_t>& vec);
+
+//  double 
+//  minEuclideanDistance(const std::vector<int64_t>& a, const std::vector<int64_t>& b, int k);
+
+//  std::vector<int> 
+//  regionQuery(const std::vector<Point>& points, int pointIdx, double eps, int k);
+
+//  void 
+//  expandCluster(std::vector<Point>& points, int pointIdx, int clusterId, double eps, int minPts, int k);
+
+//  std::unordered_map<int, std::vector<int>> 
+//  dbscan(std::vector<Point>& points, double eps, int minPts, int k);
+
+  // 声明SetWatchDog函数
+  void SetWatchDog(ns3::Time interval);
+
+  ns3::Watchdog detectWD; 
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(1000);
+
+  std::map<FaceId, std::vector<uint64_t>> lastContentSeriesOfFace;//端口在上个周期内的请求的内容序列（假设前缀都一样，只统计序列号）
+  std::map<FaceId, std::vector<int64_t>> lastIntervalSeriesOfFace;//端口在上个周期内的请求时间间隔序列
+  std::map<FaceId, std::vector<uint64_t>> nowContentSeriesOfFace;//端口在这个周期内的请求的内容序列
+  std::map<FaceId, std::vector<int64_t>> nowIntervalSeriesOfFace;//端口在这个周期内的请求时间间隔序列
+  std::map<FaceId, ns3::Time> lastInterestTimeOfFace;//端口上次请求的时刻
+  std::map<FaceId, ns3::Time> firstInterestTimeOfFace;//端口首次请求的时刻
+  std::map<FaceId, FaceId> theFirstFaceInNearRangeOfFace;//端口所属的近邻区域的首个端口
+  std::map<FaceId, FaceId> theLastFaceInNearRangeOfFace;//端口所属的近邻区域的首个端口
+  FaceId curFirstFaceInNearRange;//当前近邻区域的首个端口
+  FaceId curLastFaceInNearRange;//当前近邻区域的最后端口
+  ns3::Time curStartTime;//当前范围内的首次请求的时刻
+  int64_t maxAcceptableDelay = ns3::MilliSeconds(100).GetMicroSeconds();//最大可接受的延迟
+  // std::map<FaceId, int64_t> relativeDelayToCurStartOfFace;//端口首个请求距离当前起点的时刻
+  // std::map<FaceId, int64_t> maxDelayToCurStartOfFace;//当前范围内距离当前起点的最大延迟
+  //端口在当前采样窗口内的首次请求时刻（窗口内第一个能获知距离前一个包的interval的包）
+  //由于新的窗口开始总是空的，若当前窗口是第一个窗口，则该值为当前窗口内的第二个包，若当前窗口不是第一个窗口，则该值为当前窗口内的第一个包
+  std::map<FaceId, ns3::Time> firstInterestTimeInCurWndOfFace;
+  std::map<FaceId, bool> hasInterestOfFace;//端口是否有过请求
+
+  std::map<FaceId, int64_t> validRangeOfFace;//端口请求的有效内容范围
+
+
+  std::set<FaceId> finalSuspect1;//基于用户请求间相似性识别得到的可疑用户
+  std::set<FaceId> finalSuspect2;//基于用户单位速率所请求的有效范围的异常检测得到的可疑用户
+  std::set<FaceId> finalSuspect;//合并finalSuspect1和finalSuspect2
+
+
+  int mynodeid=0;//节点id
+  std::unordered_set<int> edgeId={2};//消费者边缘节点
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline

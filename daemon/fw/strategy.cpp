@@ -236,6 +236,7 @@ Strategy::afterNewNextHop(const fib::NextHop& nextHop, const shared_ptr<pit::Ent
 pit::OutRecord*
 Strategy::sendInterest(const Interest& interest, Face& egress, const shared_ptr<pit::Entry>& pitEntry)
 {
+  NFD_LOG_DEBUG("sendInterest out=" << egress.getId() << " interest=" << interest.getName());
   if (interest.getTag<lp::PitToken>() != nullptr) {
     Interest interest2 = interest; // make a copy to preserve tag on original packet
     interest2.removeTag<lp::PitToken>();
