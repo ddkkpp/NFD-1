@@ -278,7 +278,6 @@ void detectWDCallback(Forwarder *ptr)
             NFD_LOG_DEBUG("LSH start: ");
             for (const auto& cluster : clusters) 
             {
-                std::set<FaceId> finalSuspect1InCurrentCluster;
                 //在SimpleClustering聚类结果中开始LSH聚类
                 if (cluster.second.size() < 2) {
                   continue;
@@ -321,8 +320,8 @@ void detectWDCallback(Forwarder *ptr)
                 //开始假设检验
                 NFD_LOG_DEBUG("hypothesis testing start: ");
                 double alpha = 0.05;
-                ptr->performTests(lshClusters, ptr->lastIntervalSeriesOfFace, alpha, finalSuspect1InCurrentCluster);
-                ptr->finalSuspect1.insert(finalSuspect1InCurrentCluster.begin(), finalSuspect1InCurrentCluster.end());
+                ptr->finalSuspect1.clear();//先清空
+                ptr->performTests(lshClusters, ptr->lastIntervalSeriesOfFace, alpha, ptr->finalSuspect1);
             }
             NFD_LOG_DEBUG("final suspect 1: ");
             std::ostringstream oss;
@@ -332,12 +331,82 @@ void detectWDCallback(Forwarder *ptr)
 
             //第二大部分，根据速率与有效范围的比值做孤立森林检测
             NFD_LOG_DEBUG("Isolation Forest start: ");
+            ptr->finalSuspect2.clear();//先清空
             ptr->performIsolationForestDetection(ptr->finalSuspect2);
             NFD_LOG_DEBUG("final suspect 2: ");
             oss.str("");
             oss.clear();
             for (FaceId faceId : ptr->finalSuspect2) {
                 oss << faceId << " ";
+            }
+
+            //合并两部分的结果
+            ptr->finalSuspect.clear();//先清空
+            ptr->finalSuspect.insert(ptr->finalSuspect1.begin(), ptr->finalSuspect1.end());
+            ptr->finalSuspect.insert(ptr->finalSuspect2.begin(), ptr->finalSuspect2.end());
+
+            /*
+            分别计算finalSuspect1和finalSuspect2对应的faceId的lastContentSeriesOfFace中，包含在lastLastSequenceMap中的元素的比例。
+            若比例小于popularRate，认为是恶意用户
+            */
+            ptr->lastLastSequenceMap = ptr->lastSequenceMap;
+            ptr->lastSequenceMap = ptr->curSequenceMap;
+            ptr->curSequenceMap.clear();
+            //打印lastLastSequenceMap
+            NFD_LOG_DEBUG("lastLastSequenceMap: ");
+            for (const auto& entry : ptr->lastLastSequenceMap) {
+                NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
+            }
+            //打印lastSequenceMap
+            NFD_LOG_DEBUG("lastSequenceMap: ");
+            for (const auto& entry : ptr->lastSequenceMap) {
+                NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
+            }
+
+            for (FaceId faceId : ptr->finalSuspect) {
+                int count = 0;
+                for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
+                    if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
+                        ++count;
+                        NFD_LOG_DEBUG("is popular");
+                    }
+                    else
+                    {
+                        NFD_LOG_DEBUG("is not popular");
+                    }
+                }
+                if(ptr->lastContentSeriesOfFace[faceId].size()!=0)//注意不能除以零
+                {
+                  //整数相除想得到小数的话要先转换
+                  double popularRate = static_cast<double>(count) / static_cast<double>(ptr->lastContentSeriesOfFace[faceId].size());
+                  NFD_LOG_DEBUG("Face ID: " << faceId << " popular rate: " << popularRate);
+                  if (popularRate < ptr->popularRateLimit) {
+                      ptr->Malicious.insert(faceId);
+                      NFD_LOG_DEBUG("Face ID: " << faceId << " is malicious");
+                  }
+                }
+            }
+            //测试其他face的popular rate
+            for(auto entry : ptr->lastContentSeriesOfFace)
+            {
+                NFD_LOG_DEBUG("Face ID: " << entry.first);
+                int count = 0;
+                for (uint64_t content : entry.second) {
+                    NFD_LOG_DEBUG("content: " << content);
+                    if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
+                        ++count;
+                        NFD_LOG_DEBUG("is popular");
+                    }
+                    else
+                    {
+                        NFD_LOG_DEBUG("is not popular");
+                    }
+                }
+                if(entry.second.size()!=0)
+                {
+                  double popularRate = static_cast<double>(count) / static_cast<double>(entry.second.size());
+                  NFD_LOG_DEBUG("Face ID: " << entry.first << " popular rate: " << popularRate);
+                }
             }
 
         }
@@ -770,6 +839,9 @@ Forwarder::Forwarder(FaceTable& faceTable)
   , m_strategyChoice(*this)
   , m_csFace(face::makeNullFace(FaceUri("contentstore://")))
   , curStartTime(ns3::Seconds(0))
+  , curSequenceMap(sequenceMapCapacity) // 初始化unordered_map，容量为sequenceMapCapacity
+  , lastSequenceMap(sequenceMapCapacity) // 初始化unordered_map，容量为sequenceMapCapacity
+  , lastLastSequenceMap(sequenceMapCapacity) // 初始化unordered_map，容量为sequenceMapCapacity
 {
   m_faceTable.addReserved(m_csFace, face::FACEID_CONTENT_STORE);
 
@@ -829,10 +901,32 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
+      if(Malicious.find(ingress.face.getId()) !=Malicious.end())
+      {
+          NFD_LOG_DEBUG("faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
+          return;
+      }
       //获取seq一定要在判断scheme为非internal之后，否则会出现错误，
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
                 //而且不会对该函数报错，而是仍然运行成功，但是log显示兴趣包转发不出去
       auto seq = interest.getName().get(1).toSequenceNumber();
+      // 插入到unordered_map中
+      if (curSequenceMap.size() < sequenceMapCapacity || curSequenceMap.find(seq) != curSequenceMap.end()) {
+        curSequenceMap[seq]++;
+        NFD_LOG_DEBUG("curSequenceMap is not full OR seq "<<seq<<" already exists");
+        NFD_LOG_DEBUG("insert seq "<<seq<<" into curSequenceMap, counter= "<<curSequenceMap[seq]);
+      } else {
+        // 如果unordered_map已满，使用space-saving算法
+        auto minIt = std::min_element(curSequenceMap.begin(), curSequenceMap.end(),
+                                      [](const auto& a, const auto& b) { return a.second < b.second; });
+        if (minIt != curSequenceMap.end()) {
+          NFD_LOG_DEBUG("curSequenceMap is full");
+          NFD_LOG_DEBUG("erase seq "<<minIt->first<<" from curSequenceMap, counter= "<<minIt->second);
+          curSequenceMap[seq] = minIt->second + 1;
+          NFD_LOG_DEBUG("insert seq "<<seq<<" into curSequenceMap, counter= "<<curSequenceMap[seq]);
+          curSequenceMap.erase(minIt);
+        }
+      }
       NFD_LOG_DEBUG("seq= "<<seq);
       auto faceId = ingress.face.getId();
       NFD_LOG_DEBUG("faceId= "<<faceId);
@@ -1170,8 +1264,12 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
-  // CS insert
-  m_cs.insert(data);
+  auto seq = data.getName().get(1).toSequenceNumber();
+  if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
+    // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
+    NFD_LOG_DEBUG("CS insert data: " << data.getName());
+    m_cs.insert(data);
+  }
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
   std::multimap<std::pair<Face*, EndpointId>, std::shared_ptr<pit::Entry>> unsatisfiedPitEntries;

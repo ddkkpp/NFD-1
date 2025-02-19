@@ -270,10 +270,18 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::set<FaceId> finalSuspect1;//基于用户请求间相似性识别得到的可疑用户
   std::set<FaceId> finalSuspect2;//基于用户单位速率所请求的有效范围的异常检测得到的可疑用户
   std::set<FaceId> finalSuspect;//合并finalSuspect1和finalSuspect2
+  double popularRateLimit = 0.1;//流行度阈值(在默认设置下，正常用户的该值为0.4～0.5)
+  std::set<FaceId> Malicious;//恶意
 
 
   int mynodeid=0;//节点id
   std::unordered_set<int> edgeId={2};//消费者边缘节点
+
+  //space-saving算法的存储结构
+  std::unordered_map<uint64_t, int> curSequenceMap;
+  std::unordered_map<uint64_t, int> lastSequenceMap;
+  std::unordered_map<uint64_t, int> lastLastSequenceMap;
+  size_t sequenceMapCapacity = 200;
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
