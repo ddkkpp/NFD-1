@@ -44,6 +44,12 @@
 
 #include "face/null-face.hpp"
 
+#include <matplotlibcpp.h>
+#include <cmath>
+#include <limits>
+
+namespace plt = matplotlibcpp;
+
 namespace nfd {
 
 NFD_LOG_INIT(Forwarder);
@@ -53,31 +59,204 @@ const std::string CFG_FORWARDER = "forwarder";
 void detectWDCallback(Forwarder *ptr)
 {
     NFD_LOG_DEBUG("detectWDCallback");
-    //统计numOfInterest的均值和标准差（用简单方法计算标准差），当数值大于均值加减15倍的标准差时，认为该节点是恶意节点
-    double sum = 0;
-    double sum2 = 0;
-    double mean = 0;
-    double std = 0;
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
+    //统计numOfInterest占的比例
+    std::map<uint64_t, double> ratioOfInterest;
+    for(auto it = numOfInterest.begin(); it != numOfInterest.end(); it++)
     {
-        sum += it->second;
-        sum2 += it->second * it->second;
+        ratioOfInterest[it->first] = it->second/double(ptr->totalInterest);
     }
-    mean = sum / ptr->numOfInterest.size();
-    std = sqrt(sum2 / ptr->numOfInterest.size() - mean * mean);
-    NFD_LOG_DEBUG("mean= "<<mean<<" std= "<<std);
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
+    //统计intervalSeriesOfInterest的均值
+    std::map<uint64_t, int> avgIntervalOfInterest;
+    int maxavgInterval = 0;
+    for(auto it = intervalSeriesOfInterest.begin(); it != intervalSeriesOfInterest.end(); it++)
     {
-        if(it->second > mean + ptr->maliciousLimit * std || it->second < mean - ptr->maliciousLimit * std)
+        if(it->second.size() == 0)
         {
-            NFD_LOG_DEBUG("seq= "<<it->first<<" is malicious");
-            NFD_LOG_DEBUG("count= "<<it->second);
-            ptr->malicious.insert(it->first);
+            continue;
+        }
+        int sum = 0;
+        for(auto it2 = it->second.begin(); it2 != it->second.end(); it2++)
+        {
+            sum += *it2;
+        }
+        avgIntervalOfInterest[it->first] = sum/it->second.size();
+        NFD_LOG_DEBUG("seq= "<<it->first<<" avgInterval= "<<avgIntervalOfInterest[it->first]);
+        maxavgInterval = std::max(maxavgInterval, avgIntervalOfInterest[it->first]);
+    }
+    NFD_LOG_DEBUG("maxavgInterval= "<<maxavgInterval);
+    //对于intervalSeriesOfInterest为空的seq，将其均值取为maxavgInterval到watchdogPeriod之间的随机值
+    for(auto it = intervalSeriesOfInterest.begin(); it != intervalSeriesOfInterest.end(); it++)
+    {
+        if(it->second.size() == 0)
+        {
+            avgIntervalOfInterest[it->first] = maxavgInterval + rand()%(ptr->watchdogPeriod.GetMicroSeconds()-maxavgInterval);
+            NFD_LOG_DEBUG("seq= "<<it->first<<" avgInterval= "<<avgIntervalOfInterest[it->first]);
         }
     }
-    //重置numOfInterest
-    ptr->numOfInterest.clear();
-    
+
+    // 聚类
+    std::map<uint64_t, double> rho, delta;
+    std::map<uint64_t, uint64_t> center;
+    double dc = 0.0;
+    std::vector<uint64_t> seqs;
+    for (const auto& item : avgIntervalOfInterest) {
+        seqs.push_back(item.first);
+    }
+    int n = seqs.size();
+    NFD_LOG_DEBUG("n= "<<n);
+    std::vector<std::vector<double>> epsilon(n, std::vector<double>(n, 0.0));
+
+    // 计算欧几里德距离
+    for (int i = 0; i < n; ++i) {
+        for (int j = i + 1; j < n; ++j) {
+            epsilon[i][j] = epsilon[j][i] = std::sqrt(
+                std::pow(avgIntervalOfInterest[seqs[i]] - avgIntervalOfInterest[seqs[j]], 2)*ptr->k1 +
+                std::pow(ratioOfInterest[seqs[i]] - ratioOfInterest[seqs[j]], 2)*ptr->k2
+            );
+            NFD_LOG_DEBUG("seq1= "<<seqs[i]<<" seq2= "<<seqs[j]<<" epsilon= "<<epsilon[i][j]);
+        }
+    }
+
+    // 计算dc
+    std::vector<double> distances;
+    for (int i = 0; i < n; ++i) {
+        for (int j = i + 1; j < n; ++j) {
+            distances.push_back(epsilon[i][j]);
+        }
+    }
+    std::sort(distances.begin(), distances.end());
+    dc = distances[distances.size() * 0.02];
+    NFD_LOG_DEBUG("dc= "<<dc);
+
+    // 计算ρ
+    for (int i = 0; i < n; ++i) {
+        rho[seqs[i]] = 0;
+        for (int j = 0; j < n; ++j) {
+            if (epsilon[i][j] < dc && i != j) {
+                rho[seqs[i]] += 1;
+            }
+        }
+        NFD_LOG_DEBUG("seq= "<<seqs[i]<<" rho= "<<rho[seqs[i]]);
+    }
+
+    // 计算δ
+    for (int i = 0; i < n; ++i) {
+        if (rho[seqs[i]] == *std::max_element(rho.begin(), rho.end(), [](const auto& a, const auto& b) { return a.second < b.second; })) {
+            delta[seqs[i]] = *std::max_element(epsilon[i].begin(), epsilon[i].end());
+            NFD_LOG_DEBUG("seq= "<<seqs[i]<<" delta= "<<delta[seqs[i]]);
+        } else {
+            delta[seqs[i]] = *std::min_element(epsilon[i].begin(), epsilon[i].end(), [&](double a, double b) {
+                return (rho[seqs[std::distance(epsilon[i].begin(), std::find(epsilon[i].begin(), epsilon[i].end(), a))]] < rho[seqs[i]]) && a < b;
+            });
+            NFD_LOG_DEBUG("seq= "<<seqs[i]<<" delta= "<<delta[seqs[i]]);
+        }
+    }
+
+    // 通过阈值选取 rho与delta都大的点作为聚类中心
+    double rho_threshold = (std::min_element(rho.begin(), rho.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second +
+                            std::max_element(rho.begin(), rho.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second) / 2;
+    double delta_threshold = (std::min_element(delta.begin(), delta.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second +
+                              std::max_element(delta.begin(), delta.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second) / 2;
+    NFD_LOG_DEBUG("rho_threshold= "<<rho_threshold<<" delta_threshold= "<<delta_threshold);
+    std::vector<uint64_t> centers;
+    for (int i = 0; i < n; ++i) {
+        if (rho[seqs[i]] >= rho_threshold && delta[seqs[i]] > delta_threshold) {
+            centers.push_back(seqs[i]);
+            NFD_LOG_DEBUG("center= "<<seqs[i]);
+        }
+    }
+
+    // 聚类标记
+    std::vector<int> labels(n, -1);
+    for (size_t i = 0; i < centers.size(); ++i) {
+        labels[std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[i]))] = i;
+        NFD_LOG_DEBUG("seq= "<<centers[i]<<" label= "<<i);
+    }
+
+    std::vector<int> index_rho(n);
+    std::iota(index_rho.begin(), index_rho.end(), 0);
+    std::sort(index_rho.begin(), index_rho.end(), [&](int a, int b) { return rho[seqs[a]] > rho[seqs[b]]; });
+
+    for (int i : index_rho) {
+        if (labels[i] == -1) {
+            double min_dist = std::numeric_limits<double>::max();
+            int nearest_center = -1;
+            for (size_t j = 0; j < centers.size(); ++j) {
+                double dist = epsilon[i][std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[j]))];
+                if (dist < min_dist) {
+                    min_dist = dist;
+                    nearest_center = j;
+                }
+            }
+            labels[i] = labels[std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[nearest_center]))];
+            NFD_LOG_DEBUG("seq= "<<seqs[i]<<" label= "<<labels[i]);
+        }
+    }
+
+    // 可视化
+    std::map<int, std::vector<double>> clusters;
+    for (int i = 0; i < n; ++i) {
+        clusters[labels[i]].push_back(seqs[i]);
+    }
+
+    std::vector<double> x, y;
+    std::vector<std::string> labels_str;
+    for (const auto& item : avgIntervalOfInterest) {
+        x.push_back(item.second);
+        y.push_back(ratioOfInterest[item.first]);
+        labels_str.push_back(std::to_string(seqs[item.first]));
+    }
+
+    plt::scatter(x, y, 10.0);
+    for (size_t i = 0; i < x.size(); ++i) {
+        plt::text(x[i], y[i], labels_str[i]);
+    }
+    plt::xlabel("avgIntervalOfInterest");
+    plt::ylabel("ratioOfInterest");
+    plt::show();
+
+
+    std::vector<uint64_t> popularSeqs;
+    double maxAvgRatio = 0.0;
+    int popularCluster = 0;
+    for (const auto& cluster : clusters) {
+        double avgRatio = 0.0;
+        for (const auto& seq : cluster.second) {
+            avgRatio += ratioOfInterest[seq];
+        }
+        avgRatio /= cluster.second.size();
+        if (avgRatio > maxAvgRatio) {
+            maxAvgRatio = avgRatio;
+            popularCluster = cluster.first;
+        }
+    }
+    popularSeqs = clusters[popularCluster];
+
+    // 判断攻击
+    if (!ptr->prevClusters.empty()) {
+        if (clusters.size() == 1) {
+            for (const auto& seq : ptr->prevPopularSeqs) {
+                malicious.insert(seq);
+                NFD_LOG_DEBUG("seq= "<<seq<<" is malicious");
+            }
+        } else {
+            double tau = popularSeqs.size();
+            double prevTau = ptr->prevPopularSeqs.size();
+            double xi = 0.2; // 设定阈值
+            if (std::abs(tau - prevTau) / prevTau > xi) {
+                for (const auto& seq : popularSeqs) {
+                    if (std::find(ptr->prevPopularSeqs.begin(), ptr->prevPopularSeqs.end(), seq) == ptr->prevPopularSeqs.end()) {
+                        malicious.insert(seq);
+                        NFD_LOG_DEBUG("seq= "<<seq<<" is malicious");
+                    }
+                }
+            }
+        }
+    }
+
+    ptr->prevClusters = clusters;
+    ptr->prevPopularSeqs = popularSeqs;
+
     ptr->detectWD.Ping(ptr->watchdogPeriod);
 }
 
@@ -165,6 +344,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           return;
       }
 
+      totalInterest++;
       //统计seq的数目到numOfInterest
       if(numOfInterest.find(seq) == numOfInterest.end())
       {
@@ -174,6 +354,18 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       {
           numOfInterest[seq]++;
       }
+
+      //统计相同seq之间的时间间隔到intervalSeriesOfInterest
+      if(intervalSeriesOfInterest.find(seq) == intervalSeriesOfInterest.end())
+      {
+          intervalSeriesOfInterest[seq] = std::vector<int64_t>();
+      }
+      else
+      {
+          intervalSeriesOfInterest[seq].push_back((ns3::Simulator::Now()-lastInterestTime[seq]).GetMicroSeconds());
+      }
+      lastInterestTime[seq] = ns3::Simulator::Now();
+
 
       auto faceId = ingress.face.getId();
       NFD_LOG_DEBUG("faceId= "<<faceId);
