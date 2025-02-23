@@ -181,9 +181,9 @@ public:
 
   std::map<uint64_t, int> numOfInterest;//每个内容名的请求数量
   std::map<uint64_t, std::vector<int64_t>> intervalSeriesOfInterest;//每个内容名的请求时间间隔序列
-  std::map<uint64_t, ns3::Time> lastInterest;//每个内容名上次请求的时刻
+  std::map<uint64_t, ns3::Time> lastInterestTime;//每个内容名上次请求的时刻
   double k1 = 1e-5, k2 =1000;
-  std::map<int, std::vector<double>> prevClusters;
+  std::map<int, std::vector<uint64_t>> prevClusters;
   std::vector<uint64_t> prevPopularSeqs;
   int totalInterest=0;//总请求数量
   std::unordered_set<uint64_t> malicious;//恶意

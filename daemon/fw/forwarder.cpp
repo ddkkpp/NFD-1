@@ -44,7 +44,7 @@
 
 #include "face/null-face.hpp"
 
-#include <matplotlibcpp.h>
+#include "matplotlibcpp.h"
 #include <cmath>
 #include <limits>
 
@@ -61,14 +61,15 @@ void detectWDCallback(Forwarder *ptr)
     NFD_LOG_DEBUG("detectWDCallback");
     //统计numOfInterest占的比例
     std::map<uint64_t, double> ratioOfInterest;
-    for(auto it = numOfInterest.begin(); it != numOfInterest.end(); it++)
+    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
     {
         ratioOfInterest[it->first] = it->second/double(ptr->totalInterest);
+        NFD_LOG_DEBUG("seq= "<<it->first<<" ratio= "<<ratioOfInterest[it->first]);
     }
     //统计intervalSeriesOfInterest的均值
     std::map<uint64_t, int> avgIntervalOfInterest;
     int maxavgInterval = 0;
-    for(auto it = intervalSeriesOfInterest.begin(); it != intervalSeriesOfInterest.end(); it++)
+    for(auto it = ptr->intervalSeriesOfInterest.begin(); it != ptr->intervalSeriesOfInterest.end(); it++)
     {
         if(it->second.size() == 0)
         {
@@ -85,7 +86,7 @@ void detectWDCallback(Forwarder *ptr)
     }
     NFD_LOG_DEBUG("maxavgInterval= "<<maxavgInterval);
     //对于intervalSeriesOfInterest为空的seq，将其均值取为maxavgInterval到watchdogPeriod之间的随机值
-    for(auto it = intervalSeriesOfInterest.begin(); it != intervalSeriesOfInterest.end(); it++)
+    for(auto it = ptr->intervalSeriesOfInterest.begin(); it != ptr->intervalSeriesOfInterest.end(); it++)
     {
         if(it->second.size() == 0)
         {
@@ -129,6 +130,8 @@ void detectWDCallback(Forwarder *ptr)
     NFD_LOG_DEBUG("dc= "<<dc);
 
     // 计算ρ
+    double maxRho = 0.0;
+    double minRho = std::numeric_limits<double>::max();
     for (int i = 0; i < n; ++i) {
         rho[seqs[i]] = 0;
         for (int j = 0; j < n; ++j) {
@@ -136,27 +139,35 @@ void detectWDCallback(Forwarder *ptr)
                 rho[seqs[i]] += 1;
             }
         }
+        maxRho = std::max(maxRho, rho[seqs[i]]);
+        minRho = std::min(minRho, rho[seqs[i]]);
         NFD_LOG_DEBUG("seq= "<<seqs[i]<<" rho= "<<rho[seqs[i]]);
     }
 
     // 计算δ
+    double maxDelta = 0.0;
+    double minDelta = std::numeric_limits<double>::max();
     for (int i = 0; i < n; ++i) {
-        if (rho[seqs[i]] == *std::max_element(rho.begin(), rho.end(), [](const auto& a, const auto& b) { return a.second < b.second; })) {
+        if (rho[seqs[i]] == maxRho) {
             delta[seqs[i]] = *std::max_element(epsilon[i].begin(), epsilon[i].end());
-            NFD_LOG_DEBUG("seq= "<<seqs[i]<<" delta= "<<delta[seqs[i]]);
         } else {
-            delta[seqs[i]] = *std::min_element(epsilon[i].begin(), epsilon[i].end(), [&](double a, double b) {
-                return (rho[seqs[std::distance(epsilon[i].begin(), std::find(epsilon[i].begin(), epsilon[i].end(), a))]] < rho[seqs[i]]) && a < b;
-            });
-            NFD_LOG_DEBUG("seq= "<<seqs[i]<<" delta= "<<delta[seqs[i]]);
+          delta[seqs[i]] = std::numeric_limits<double>::max();
+          //找到rho更大的点中与当前点距离最小的点
+            for (int j = 0; j < n; ++j) {
+                if (rho[seqs[j]] > rho[seqs[i]] && epsilon[i][j] < delta[seqs[i]]) {
+                    delta[seqs[i]] = epsilon[i][j];
+                }
+            }
         }
+        NFD_LOG_DEBUG("seq= "<<seqs[i]<<" delta= "<<delta[seqs[i]]);
+        minDelta = std::min(minDelta, delta[seqs[i]]);
+        maxDelta = std::max(maxDelta, delta[seqs[i]]);
     }
 
     // 通过阈值选取 rho与delta都大的点作为聚类中心
-    double rho_threshold = (std::min_element(rho.begin(), rho.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second +
-                            std::max_element(rho.begin(), rho.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second) / 2;
-    double delta_threshold = (std::min_element(delta.begin(), delta.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second +
-                              std::max_element(delta.begin(), delta.end(), [](const auto& a, const auto& b) { return a.second < b.second; })->second) / 2;
+    double rho_threshold = (minRho + maxRho) / 2;
+    double delta_threshold = (minDelta + maxDelta) / 2;
+
     NFD_LOG_DEBUG("rho_threshold= "<<rho_threshold<<" delta_threshold= "<<delta_threshold);
     std::vector<uint64_t> centers;
     for (int i = 0; i < n; ++i) {
@@ -169,7 +180,8 @@ void detectWDCallback(Forwarder *ptr)
     // 聚类标记
     std::vector<int> labels(n, -1);
     for (size_t i = 0; i < centers.size(); ++i) {
-        labels[std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[i]))] = i;
+        int index = std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[i]));
+        labels[index] = i;
         NFD_LOG_DEBUG("seq= "<<centers[i]<<" label= "<<i);
     }
 
@@ -182,19 +194,21 @@ void detectWDCallback(Forwarder *ptr)
             double min_dist = std::numeric_limits<double>::max();
             int nearest_center = -1;
             for (size_t j = 0; j < centers.size(); ++j) {
-                double dist = epsilon[i][std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[j]))];
+                int centerIndex = std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[j]));
+                double dist = epsilon[i][centerIndex];
                 if (dist < min_dist) {
                     min_dist = dist;
                     nearest_center = j;
                 }
             }
-            labels[i] = labels[std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[nearest_center]))];
+            int nearestCenterIndex = std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[nearest_center]));
+            labels[i] = labels[nearestCenterIndex];
             NFD_LOG_DEBUG("seq= "<<seqs[i]<<" label= "<<labels[i]);
         }
     }
 
     // 可视化
-    std::map<int, std::vector<double>> clusters;
+    std::map<int, std::vector<uint64_t>> clusters;
     for (int i = 0; i < n; ++i) {
         clusters[labels[i]].push_back(seqs[i]);
     }
@@ -236,7 +250,7 @@ void detectWDCallback(Forwarder *ptr)
     if (!ptr->prevClusters.empty()) {
         if (clusters.size() == 1) {
             for (const auto& seq : ptr->prevPopularSeqs) {
-                malicious.insert(seq);
+                ptr->malicious.insert(seq);
                 NFD_LOG_DEBUG("seq= "<<seq<<" is malicious");
             }
         } else {
@@ -246,7 +260,7 @@ void detectWDCallback(Forwarder *ptr)
             if (std::abs(tau - prevTau) / prevTau > xi) {
                 for (const auto& seq : popularSeqs) {
                     if (std::find(ptr->prevPopularSeqs.begin(), ptr->prevPopularSeqs.end(), seq) == ptr->prevPopularSeqs.end()) {
-                        malicious.insert(seq);
+                        ptr->malicious.insert(seq);
                         NFD_LOG_DEBUG("seq= "<<seq<<" is malicious");
                     }
                 }
