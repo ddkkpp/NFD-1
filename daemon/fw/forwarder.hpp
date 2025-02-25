@@ -177,12 +177,13 @@ public:
   void SetWatchDog(ns3::Time interval);
 
   ns3::Watchdog detectWD; 
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(1000);
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(5000);
+  int wdCount = 0;
 
   std::map<uint64_t, int> numOfInterest;//每个内容名的请求数量
   std::map<uint64_t, std::vector<int64_t>> intervalSeriesOfInterest;//每个内容名的请求时间间隔序列
   std::map<uint64_t, ns3::Time> lastInterestTime;//每个内容名上次请求的时刻
-  double k1 = 1e-5, k2 =1000;
+  double k1 = 1e-6, k2 =1e4;
   std::map<int, std::vector<uint64_t>> prevClusters;
   std::vector<uint64_t> prevPopularSeqs;
   int totalInterest=0;//总请求数量

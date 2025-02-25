@@ -58,7 +58,13 @@ const std::string CFG_FORWARDER = "forwarder";
 
 void detectWDCallback(Forwarder *ptr)
 {
+    ptr->wdCount++;
     NFD_LOG_DEBUG("detectWDCallback");
+    if(ptr->numOfInterest.empty())
+    {
+        NFD_LOG_DEBUG("numOfInterest is empty");
+        return;
+    }
     //统计numOfInterest占的比例
     std::map<uint64_t, double> ratioOfInterest;
     for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
@@ -96,33 +102,37 @@ void detectWDCallback(Forwarder *ptr)
     }
 
     // 聚类
+    // seq，avgIntervalOfInterest，ratioOfInterest构成三元组，进行聚类
+    std::vector<std::tuple<uint64_t, int, double>> data;
+    for (const auto& item : avgIntervalOfInterest) {
+        data.emplace_back(item.first, item.second, ratioOfInterest[item.first]);
+    }
+
+    std::map<uint64_t, std::map<uint64_t, double>> epsilon;
     std::map<uint64_t, double> rho, delta;
     std::map<uint64_t, uint64_t> center;
     double dc = 0.0;
-    std::vector<uint64_t> seqs;
-    for (const auto& item : avgIntervalOfInterest) {
-        seqs.push_back(item.first);
-    }
-    int n = seqs.size();
+    int n = data.size();
     NFD_LOG_DEBUG("n= "<<n);
-    std::vector<std::vector<double>> epsilon(n, std::vector<double>(n, 0.0));
 
     // 计算欧几里德距离
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
-            epsilon[i][j] = epsilon[j][i] = std::sqrt(
-                std::pow(avgIntervalOfInterest[seqs[i]] - avgIntervalOfInterest[seqs[j]], 2)*ptr->k1 +
-                std::pow(ratioOfInterest[seqs[i]] - ratioOfInterest[seqs[j]], 2)*ptr->k2
+            uint64_t seq_i = std::get<0>(data[i]);
+            uint64_t seq_j = std::get<0>(data[j]);
+            epsilon[seq_i][seq_j] = epsilon[seq_j][seq_i] = std::sqrt(
+                std::pow(std::get<1>(data[i]) - std::get<1>(data[j]), 2) * ptr->k1 +
+                std::pow(std::get<2>(data[i]) - std::get<2>(data[j]), 2) * ptr->k2
             );
-            NFD_LOG_DEBUG("seq1= "<<seqs[i]<<" seq2= "<<seqs[j]<<" epsilon= "<<epsilon[i][j]);
+            NFD_LOG_DEBUG("seq1= "<<seq_i<<" seq2= "<<seq_j<<" epsilon= "<<epsilon[seq_i][seq_j]);
         }
     }
 
     // 计算dc
     std::vector<double> distances;
-    for (int i = 0; i < n; ++i) {
-        for (int j = i + 1; j < n; ++j) {
-            distances.push_back(epsilon[i][j]);
+    for (const auto& item : epsilon) {
+        for (const auto& inner_item : item.second) {
+            distances.push_back(inner_item.second);
         }
     }
     std::sort(distances.begin(), distances.end());
@@ -132,36 +142,40 @@ void detectWDCallback(Forwarder *ptr)
     // 计算ρ
     double maxRho = 0.0;
     double minRho = std::numeric_limits<double>::max();
-    for (int i = 0; i < n; ++i) {
-        rho[seqs[i]] = 0;
-        for (int j = 0; j < n; ++j) {
-            if (epsilon[i][j] < dc && i != j) {
-                rho[seqs[i]] += 1;
+    for (const auto& item : epsilon) {
+        uint64_t seq_i = item.first;
+        rho[seq_i] = 0;
+        for (const auto& inner_item : item.second) {
+            if (inner_item.second < dc) {
+                rho[seq_i] += 1;
             }
         }
-        maxRho = std::max(maxRho, rho[seqs[i]]);
-        minRho = std::min(minRho, rho[seqs[i]]);
-        NFD_LOG_DEBUG("seq= "<<seqs[i]<<" rho= "<<rho[seqs[i]]);
+        maxRho = std::max(maxRho, rho[seq_i]);
+        minRho = std::min(minRho, rho[seq_i]);
+        NFD_LOG_DEBUG("seq= "<<seq_i<<" rho= "<<rho[seq_i]);
     }
 
     // 计算δ
     double maxDelta = 0.0;
     double minDelta = std::numeric_limits<double>::max();
-    for (int i = 0; i < n; ++i) {
-        if (rho[seqs[i]] == maxRho) {
-            delta[seqs[i]] = *std::max_element(epsilon[i].begin(), epsilon[i].end());
+    for (const auto& item : epsilon) {
+        uint64_t seq_i = item.first;
+        if (rho[seq_i] == maxRho) {
+            delta[seq_i] = std::max_element(item.second.begin(), item.second.end(), [](const auto& a, const auto& b) {
+                return a.second < b.second;
+            })->second;
         } else {
-          delta[seqs[i]] = std::numeric_limits<double>::max();
-          //找到rho更大的点中与当前点距离最小的点
-            for (int j = 0; j < n; ++j) {
-                if (rho[seqs[j]] > rho[seqs[i]] && epsilon[i][j] < delta[seqs[i]]) {
-                    delta[seqs[i]] = epsilon[i][j];
+            delta[seq_i] = std::numeric_limits<double>::max();
+            for (const auto& inner_item : item.second) {
+                uint64_t seq_j = inner_item.first;
+                if (rho[seq_j] > rho[seq_i] && inner_item.second < delta[seq_i]) {
+                    delta[seq_i] = inner_item.second;
                 }
             }
         }
-        NFD_LOG_DEBUG("seq= "<<seqs[i]<<" delta= "<<delta[seqs[i]]);
-        minDelta = std::min(minDelta, delta[seqs[i]]);
-        maxDelta = std::max(maxDelta, delta[seqs[i]]);
+        NFD_LOG_DEBUG("seq= "<<seq_i<<" delta= "<<delta[seq_i]);
+        minDelta = std::min(minDelta, delta[seq_i]);
+        maxDelta = std::max(maxDelta, delta[seq_i]);
     }
 
     // 通过阈值选取 rho与delta都大的点作为聚类中心
@@ -170,65 +184,86 @@ void detectWDCallback(Forwarder *ptr)
 
     NFD_LOG_DEBUG("rho_threshold= "<<rho_threshold<<" delta_threshold= "<<delta_threshold);
     std::vector<uint64_t> centers;
-    for (int i = 0; i < n; ++i) {
-        if (rho[seqs[i]] >= rho_threshold && delta[seqs[i]] > delta_threshold) {
-            centers.push_back(seqs[i]);
-            NFD_LOG_DEBUG("center= "<<seqs[i]);
+    for (const auto& item : data) {
+        uint64_t seq = std::get<0>(item);
+        if (rho[seq] * delta[seq] > rho_threshold * delta_threshold) {
+            NFD_LOG_DEBUG("seq= "<<seq<<" rho= "<<rho[seq]<<" delta= "<<delta[seq]);
+            if(rho[seq] > rho_threshold  && delta[seq] > delta_threshold){
+                centers.push_back(seq);
+                NFD_LOG_DEBUG("center= "<<seq);
+            }
         }
     }
 
     // 聚类标记
-    std::vector<int> labels(n, -1);
+    std::map<uint64_t, int> labels;
     for (size_t i = 0; i < centers.size(); ++i) {
-        int index = std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[i]));
-        labels[index] = i;
-        NFD_LOG_DEBUG("seq= "<<centers[i]<<" label= "<<i);
+        labels[centers[i]] = i;
+        NFD_LOG_DEBUG("seq= "<<centers[i]<<" center label= "<<i);
     }
 
-    std::vector<int> index_rho(n);
-    std::iota(index_rho.begin(), index_rho.end(), 0);
-    std::sort(index_rho.begin(), index_rho.end(), [&](int a, int b) { return rho[seqs[a]] > rho[seqs[b]]; });
+    std::vector<uint64_t> seqs;
+    for (const auto& item : data) {
+        seqs.push_back(std::get<0>(item));
+    }
+    std::sort(seqs.begin(), seqs.end(), [&](uint64_t a, uint64_t b) { return rho[a] > rho[b]; });
 
-    for (int i : index_rho) {
-        if (labels[i] == -1) {
+    for (const auto& seq_i : seqs) {
+        if (labels.find(seq_i) == labels.end()) {
+            uint64_t nearest_point = 0;
             double min_dist = std::numeric_limits<double>::max();
-            int nearest_center = -1;
-            for (size_t j = 0; j < centers.size(); ++j) {
-                int centerIndex = std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[j]));
-                double dist = epsilon[i][centerIndex];
-                if (dist < min_dist) {
-                    min_dist = dist;
-                    nearest_center = j;
+            for (const auto& seq_j : seqs) {
+                if (rho[seq_j] > rho[seq_i] && epsilon[seq_i][seq_j] < min_dist) {
+                    min_dist = epsilon[seq_i][seq_j];
+                    nearest_point = seq_j;
                 }
             }
-            int nearestCenterIndex = std::distance(seqs.begin(), std::find(seqs.begin(), seqs.end(), centers[nearest_center]));
-            labels[i] = labels[nearestCenterIndex];
-            NFD_LOG_DEBUG("seq= "<<seqs[i]<<" label= "<<labels[i]);
+            labels[seq_i] = labels[nearest_point];
+            NFD_LOG_DEBUG("seq= " << seq_i << " assigned label from seq= " << nearest_point << " label= " << labels[nearest_point]);
         }
     }
 
     // 可视化
     std::map<int, std::vector<uint64_t>> clusters;
-    for (int i = 0; i < n; ++i) {
-        clusters[labels[i]].push_back(seqs[i]);
+    for (const auto& item : labels) {
+        clusters[item.second].push_back(item.first);
     }
 
     std::vector<double> x, y;
-    std::vector<std::string> labels_str;
-    for (const auto& item : avgIntervalOfInterest) {
-        x.push_back(item.second);
-        y.push_back(ratioOfInterest[item.first]);
-        labels_str.push_back(std::to_string(seqs[item.first]));
+    std::vector<std::string> seqs_str;
+    std::vector<std::string> colors = {"red", "blue", "green", "purple", "orange", "brown", "pink", "gray", "olive", "cyan"};
+    std::vector<std::string> point_colors;
+    for (const auto& d : data) {
+        x.push_back(std::get<1>(d));
+        y.push_back(std::get<2>(d));
+        seqs_str.push_back(std::to_string(std::get<0>(d)));
+        point_colors.push_back(colors[labels[std::get<0>(d)] % colors.size()]);
     }
 
-    plt::scatter(x, y, 10.0);
+    // 清除当前图形
+    plt::clf();
+
     for (size_t i = 0; i < x.size(); ++i) {
-        plt::text(x[i], y[i], labels_str[i]);
+        plt::scatter(std::vector<double>{x[i]}, std::vector<double>{y[i]}, 10.0, {{"color", point_colors[i]}});
+        plt::text(x[i], y[i], seqs_str[i]);
     }
     plt::xlabel("avgIntervalOfInterest");
     plt::ylabel("ratioOfInterest");
-    plt::show();
+    plt::save("/media/sf_ndnsim/cluster_node" + std::to_string(ptr->mynodeid) +"period" + std::to_string(ptr->wdCount) + ".png");
+    plt::show(false);
 
+    // 保存数据到文件
+    std::string filename = "/media/sf_ndnsim/cluster_node" + std::to_string(ptr->mynodeid) +"period" + std::to_string(ptr->wdCount) + ".txt";
+    std::ofstream outfile(filename);
+    if (outfile.is_open()) {
+        for (size_t i = 0; i < x.size(); ++i) {
+            outfile << "seq: "<<seqs_str[i]<<", x: " << x[i] << ", y: " << y[i] << ", label: " << labels[std::get<0>(data[i])] << ", color: " << point_colors[i] << "\n";
+        }
+        outfile.close();
+        NFD_LOG_DEBUG("数据已保存到文件: " << filename);
+    } else {
+        NFD_LOG_DEBUG("无法打开文件: " << filename);
+    }
 
     std::vector<uint64_t> popularSeqs;
     double maxAvgRatio = 0.0;
@@ -236,7 +271,9 @@ void detectWDCallback(Forwarder *ptr)
     for (const auto& cluster : clusters) {
         double avgRatio = 0.0;
         for (const auto& seq : cluster.second) {
-            avgRatio += ratioOfInterest[seq];
+            avgRatio += std::get<2>(*std::find_if(data.begin(), data.end(), [&](const auto& d) {
+                return std::get<0>(d) == seq;
+            }));
         }
         avgRatio /= cluster.second.size();
         if (avgRatio > maxAvgRatio) {
@@ -245,6 +282,7 @@ void detectWDCallback(Forwarder *ptr)
         }
     }
     popularSeqs = clusters[popularCluster];
+    NFD_LOG_DEBUG("popularCluster= "<<popularCluster);
 
     // 判断攻击
     if (!ptr->prevClusters.empty()) {
@@ -270,6 +308,11 @@ void detectWDCallback(Forwarder *ptr)
 
     ptr->prevClusters = clusters;
     ptr->prevPopularSeqs = popularSeqs;
+
+    //重置
+    ptr->numOfInterest.clear();
+    ptr->intervalSeriesOfInterest.clear();
+    ptr->totalInterest = 0;
 
     ptr->detectWD.Ping(ptr->watchdogPeriod);
 }
@@ -321,7 +364,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetWatchDog(ns3::MilliSeconds(1000));
+  SetWatchDog(ns3::MilliSeconds(5000));
 }
 
 Forwarder::~Forwarder() = default;
