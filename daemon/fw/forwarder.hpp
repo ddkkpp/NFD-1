@@ -49,6 +49,7 @@
 #include <iostream>
 #include <sstream>
 #include <openssl/md5.h>
+#include <chrono>
 #include "ns3/watchdog.h"
 #include "ns3/nstime.h"
 #include "ns3/simulator.h"
@@ -186,6 +187,7 @@ public:
   double k1 = 1e-6, k2 =1e4;
   std::map<int, std::vector<uint64_t>> prevClusters;
   std::vector<uint64_t> prevPopularSeqs;
+  std::vector<uint64_t> preunPopularSeqs;
   int totalInterest=0;//总请求数量
   std::unordered_set<uint64_t> malicious;//恶意
 
