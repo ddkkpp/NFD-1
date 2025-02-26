@@ -52,31 +52,62 @@ const std::string CFG_FORWARDER = "forwarder";
 
 void detectWDCallback(Forwarder *ptr)
 {
+    ptr->wdCount++;
     NFD_LOG_DEBUG("detectWDCallback");
-    //统计numOfInterest的均值和标准差（用简单方法计算标准差），当数值大于均值加减15倍的标准差时，认为该节点是恶意节点
-    double sum = 0;
-    double sum2 = 0;
-    double mean = 0;
-    double std = 0;
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
+    std::map<uint64_t, double> av;//每个内容名的平均请求强度
+    double mean = 0;//均值
+    double sigma = 0;//标准差
+    double sum = 0;//总和
+    double sum2 = 0;//平方和
+
+    for(auto it = ptr->n_u.begin(); it != ptr->n_u.end(); it++)
     {
-        sum += it->second;
-        sum2 += it->second * it->second;
-    }
-    mean = sum / ptr->numOfInterest.size();
-    std = sqrt(sum2 / ptr->numOfInterest.size() - mean * mean);
-    NFD_LOG_DEBUG("mean= "<<mean<<" std= "<<std);
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
-    {
-        if(it->second > mean + ptr->maliciousLimit * std || it->second < mean - ptr->maliciousLimit * std)
-        {
-            NFD_LOG_DEBUG("seq= "<<it->first<<" is malicious");
-            NFD_LOG_DEBUG("count= "<<it->second);
-            ptr->malicious.insert(it->first);
+       NFD_LOG_DEBUG("seq= "<<it->first);
+       double temp = double(it->second.size()) / double((ptr->n).size());
+       NFD_LOG_DEBUG("ratio of user number= "<<temp);
+       if(ptr->wdCount==1){
+            ptr->rho[it->first] = temp;
         }
+        else{
+            ptr->rho[it->first] = ptr->lambda * ptr->rho[it->first] + (1 - ptr->lambda) * temp;
+        }
+        NFD_LOG_DEBUG("rho= "<<ptr->rho[it->first]);
+        double r = double(ptr->numOfInterest[it->first]) / double(ptr->m);
+        NFD_LOG_DEBUG("r= "<<r);
+        av[it->first] = r / ptr->rho[it->first];
+        NFD_LOG_DEBUG("av= "<<av[it->first]);
+        sum += av[it->first];
+        sum2 += av[it->first] * av[it->first];
+    }
+    mean = sum / double(ptr->n_u.size());
+    sigma = sqrt(sum2 / double(ptr->n_u.size()) - mean * mean);
+    NFD_LOG_DEBUG("mean= "<<mean<<" sigma= "<<sigma);
+    if(ptr->wdCount == 1)
+    {
+        ptr->alpha = mean + 3 * sigma;
+    }
+    else
+    {
+        ptr->alpha = ptr->lambda * (mean + 3 * sigma) + (1 - ptr->lambda) * ptr->alpha;
+    }
+    NFD_LOG_DEBUG("alpha= "<<ptr->alpha);
+    for(auto it = ptr->n_u.begin(); it != ptr->n_u.end(); it++)
+    {
+        if(av[it->first] > ptr->alpha)
+        {
+            ptr->malicious.insert(it->first);
+            NFD_LOG_DEBUG("detect seq= "<<it->first<<" is malicious");
+        }
+
     }
     //重置numOfInterest
     ptr->numOfInterest.clear();
+    //重置n_u
+    ptr->n_u.clear();
+    //重置n
+    ptr->n.clear();
+    //重置m
+    ptr->m = 0;
     
     ptr->detectWD.Ping(ptr->watchdogPeriod);
 }
@@ -128,7 +159,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetWatchDog(ns3::MilliSeconds(1000));
+  SetWatchDog(ns3::MilliSeconds(5000));
 }
 
 Forwarder::~Forwarder() = default;
@@ -150,17 +181,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   // receive Interest
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
 
-  auto faceId = ingress.face.getId();
-  NFD_LOG_DEBUG("faceId= "<<faceId);
-  nfd::face::Transport* mytransport = ingress.face.getTransport();
-  ns3::Ptr<ns3::Node> mynode =nullptr;
-  ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
-  ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
-  ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
-  ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
-  mynode = p2pNetDevice->GetNode();
-  mynodeid = mynode->GetId();
-  NFD_LOG_DEBUG("nodeid"<<mynodeid);
+
 
   NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
@@ -172,7 +193,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       auto seq = interest.getName().get(1).toSequenceNumber();
       if(malicious.find(seq) !=malicious.end())
       {
-          NFD_LOG_DEBUG("seq= "<<seq<<" is malicious, drop the interest");
+          NFD_LOG_DEBUG("receive seq= "<<seq<<" is malicious, drop the interest");
           return;
       }
 
@@ -186,6 +207,41 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           numOfInterest[seq]++;
       }
 
+      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+      if(consumerId != nullptr)
+      {
+          NFD_LOG_DEBUG("consumerId= "<<*consumerId);
+      }
+      else
+      {
+          NFD_LOG_DEBUG("consumerId is null");
+      }
+      //统计每个seq的不同consumerId数量
+      if(n_u.find(seq) == n_u.end())
+      {
+          std::unordered_set<uint64_t> temp;
+          temp.insert(*consumerId);
+          n_u[seq] = temp;
+      }
+      else
+      {
+          n_u[seq].insert(*consumerId);
+      }
+      //统计不同consumerId的数量
+      n.insert(*consumerId);
+      m++;
+
+      auto faceId = ingress.face.getId();
+      NFD_LOG_DEBUG("faceId= "<<faceId);
+      nfd::face::Transport* mytransport = ingress.face.getTransport();
+      ns3::Ptr<ns3::Node> mynode =nullptr;
+      ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
+      ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
+      ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
+      ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
+      mynode = p2pNetDevice->GetNode();
+      mynodeid = mynode->GetId();
+      NFD_LOG_DEBUG("nodeid"<<mynodeid);
 
   }
 

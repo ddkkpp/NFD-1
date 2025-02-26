@@ -177,10 +177,17 @@ public:
   void SetWatchDog(ns3::Time interval);
 
   ns3::Watchdog detectWD; 
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(1000);
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(5000);
 
-  std::unordered_map<uint64_t, int> numOfInterest;//每个内容名的请求数量
-  int maliciousLimit = 15;//恶意节点的请求数量距离均值的倍数限制
+  std::map<uint64_t, int> numOfInterest;//每个内容名的请求数量
+  std::map<uint64_t, std::unordered_set<uint64_t>> n_u;//每个内容名的不同用户
+  std::unordered_set<uint64_t> n;//不同用户
+  std::map<uint64_t, double> rho;//每个内容名的流行度
+  int m=0;//请求总数量
+  // std::map<uint64_t, double> av;//每个内容名的平均请求强度
+  double lambda = 0.8;//流行度衰减常数
+  double alpha;//平均请求强度的阈值
+  int wdCount = 0;//watchdog计数
   std::unordered_set<uint64_t> malicious;//恶意
 
 
