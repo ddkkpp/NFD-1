@@ -150,6 +150,17 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   // receive Interest
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
 
+  auto faceId = ingress.face.getId();
+  NFD_LOG_DEBUG("faceId= "<<faceId);
+  nfd::face::Transport* mytransport = ingress.face.getTransport();
+  ns3::Ptr<ns3::Node> mynode =nullptr;
+  ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
+  ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
+  ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
+  ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
+  mynode = p2pNetDevice->GetNode();
+  mynodeid = mynode->GetId();
+  NFD_LOG_DEBUG("nodeid"<<mynodeid);
 
   NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
@@ -175,17 +186,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           numOfInterest[seq]++;
       }
 
-      auto faceId = ingress.face.getId();
-      NFD_LOG_DEBUG("faceId= "<<faceId);
-      nfd::face::Transport* mytransport = ingress.face.getTransport();
-      ns3::Ptr<ns3::Node> mynode =nullptr;
-      ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
-      ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
-      ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
-      ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
-      mynode = p2pNetDevice->GetNode();
-      mynodeid = mynode->GetId();
-      NFD_LOG_DEBUG("nodeid"<<mynodeid);
+
   }
 
 
