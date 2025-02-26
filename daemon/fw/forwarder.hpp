@@ -186,7 +186,9 @@ public:
   int m=0;//请求总数量
   // std::map<uint64_t, double> av;//每个内容名的平均请求强度
   double lambda = 0.8;//流行度衰减常数
-  double alpha;//平均请求强度的阈值
+  double thr_av;//平均请求强度的阈值
+  double thr_r;//请求强度的阈值
+  double thr_rho;//流行度的阈值
   int wdCount = 0;//watchdog计数
   std::unordered_set<uint64_t> malicious;//恶意
 

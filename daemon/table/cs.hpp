@@ -52,6 +52,9 @@ public:
   void
   insert(const Data& data, bool isUnsolicited = false);
 
+  void
+  insert(const Data& data, double popularity, bool isUnsolicited = false);
+
   /** \brief asynchronously erases entries under \p prefix
    *  \tparam AfterEraseCallback `void f(size_t nErased)`
    *  \param prefix name prefix of entries
@@ -88,6 +91,17 @@ public:
     hit(interest, match->getData());
   }
 
+  template<typename HitCallback, typename MissCallback>
+  void
+  Cs::find(const Interest& interest, double popularity, HitCallback&& hit, MissCallback&& miss) const
+  {
+    auto match = findImpl(interest, popularity);
+    if (match == m_table.end()) {
+      miss(interest);
+      return;
+    }
+    hit(interest, match->getData());
+  }
   /** \brief get number of stored packets
    */
   size_t
@@ -181,6 +195,9 @@ private:
 
   const_iterator
   findImpl(const Interest& interest) const;
+
+  const_iterator
+  findImpl(const Interest& interest, double popularity) const;
 
   void
   setPolicyImpl(unique_ptr<Policy> policy);

@@ -84,6 +84,42 @@ Cs::insert(const Data& data, bool isUnsolicited)
   }
 }
 
+void
+Cs::insert(const Data& data, double popularity, bool isUnsolicited)
+{
+  if (!m_shouldAdmit || m_policy->getLimit() == 0) {
+    return;
+  }
+  NFD_LOG_DEBUG("insert " << data.getName());
+
+  // recognize CachePolicy
+  shared_ptr<lp::CachePolicyTag> tag = data.getTag<lp::CachePolicyTag>();
+  if (tag != nullptr) {
+    lp::CachePolicyType policy = tag->get().getPolicy();
+    if (policy == lp::CachePolicyType::NO_CACHE) {
+      return;
+    }
+  }
+
+  const_iterator it;
+  bool isNewEntry = false;
+  std::tie(it, isNewEntry) = m_table.emplace(data.shared_from_this(), isUnsolicited);
+  Entry& entry = const_cast<Entry&>(*it);
+
+  entry.updateFreshUntil();
+
+  if (!isNewEntry) { // existing entry
+    if (entry.isUnsolicited() && !isUnsolicited) {
+      entry.clearUnsolicited();
+    }
+
+    m_policy->afterRefresh(it, popularity);
+  }
+  else {
+    m_policy->afterInsert(it, popularity);
+  }
+}
+
 std::pair<Cs::const_iterator, Cs::const_iterator>
 Cs::findPrefixRange(const Name& prefix) const
 {
@@ -130,6 +166,29 @@ Cs::findImpl(const Interest& interest) const
   m_policy->beforeUse(match);
   return match;
 }
+
+Cs::const_iterator
+Cs::findImpl(const Interest& interest, double popularity) const
+{
+  if (!m_shouldServe || m_policy->getLimit() == 0) {
+    return m_table.end();
+  }
+
+  const Name& prefix = interest.getName();
+  auto range = findPrefixRange(prefix);
+  auto match = std::find_if(range.first, range.second,
+                            [&interest] (const auto& entry) { return entry.canSatisfy(interest); });
+
+  if (match == range.second) {
+    NFD_LOG_DEBUG("find " << prefix << " no-match");
+    return m_table.end();
+  }
+  NFD_LOG_DEBUG("find " << prefix << " matching " << match->getName());
+  m_policy->beforeUse(match, popularity);
+  return match;
+}
+
+
 
 void
 Cs::dump()

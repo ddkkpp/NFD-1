@@ -80,10 +80,24 @@ Policy::afterInsert(EntryRef i)
 }
 
 void
+Policy::afterInsert(EntryRef i, double popularity)
+{
+  BOOST_ASSERT(m_cs != nullptr);
+  this->doAfterInsert(i, popularity);
+}
+
+void
 Policy::afterRefresh(EntryRef i)
 {
   BOOST_ASSERT(m_cs != nullptr);
   this->doAfterRefresh(i);
+}
+
+void
+Policy::afterRefresh(EntryRef i, double popularity)
+{
+  BOOST_ASSERT(m_cs != nullptr);
+  this->doAfterRefresh(i, popularity);
 }
 
 void
@@ -98,6 +112,13 @@ Policy::beforeUse(EntryRef i)
 {
   BOOST_ASSERT(m_cs != nullptr);
   this->doBeforeUse(i);
+}
+
+void
+Policy::beforeUse(EntryRef i, double popularity)
+{
+  BOOST_ASSERT(m_cs != nullptr);
+  this->doBeforeUse(i, popularity);
 }
 
 } // namespace cs
