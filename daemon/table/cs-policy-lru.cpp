@@ -39,14 +39,14 @@ LruPolicy::LruPolicy()
 }
 
 void
-LruPolicy::doAfterInsert(EntryRef i)
+LruPolicy::doAfterInsert(EntryRef i, double popularity)
 {
   this->insertToQueue(i, true);
   this->evictEntries();
 }
 
 void
-LruPolicy::doAfterRefresh(EntryRef i)
+LruPolicy::doAfterRefresh(EntryRef i, double popularity)
 {
   this->insertToQueue(i, false);
 }
@@ -58,7 +58,7 @@ LruPolicy::doBeforeErase(EntryRef i)
 }
 
 void
-LruPolicy::doBeforeUse(EntryRef i)
+LruPolicy::doBeforeUse(EntryRef i, double popularity)
 {
   this->insertToQueue(i, false);
 }

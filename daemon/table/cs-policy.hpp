@@ -123,27 +123,36 @@ public:
    *  The policy may evict entries if necessary.
    *  During this process, \p i might be evicted.
    */
-  void
+  virtual void
+  afterInsert(EntryRef i);
+
+  virtual void
   afterInsert(EntryRef i, double popularity);
 
   /** \brief invoked by CS after an existing entry is refreshed by same Data
    *
    *  The policy may witness this refresh to make better eviction decisions in the future.
    */
-  void
+  virtual void
+  afterRefresh(EntryRef i);
+
+  virtual void
   afterRefresh(EntryRef i, double popularity);
 
   /** \brief invoked by CS before an entry is erased due to management command
    *  \warning CS must not invoke this method if an entry is erased due to eviction.
    */
-  void
+  virtual void
   beforeErase(EntryRef i);
 
   /** \brief invoked by CS before an entry is used to match a lookup
    *
    *  The policy may witness this usage to make better eviction decisions in the future.
    */
-  void
+  virtual void
+  beforeUse(EntryRef i);
+
+  virtual void
   beforeUse(EntryRef i, double popularity);
 
 protected:

@@ -507,8 +507,8 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   }
 
   auto seq = data.getName().get(1).toSequenceNumber();
-  double popolarity = rho[seq];
-  NFD_LOG_DEBUG("insert seq "<<seq<<" popolarity= "<<popolarity);
+  double popularity = rho[seq];
+  NFD_LOG_DEBUG("insert seq "<<seq<<" popularity= "<<popularity);
   m_cs.insert(data, popularity);
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;

@@ -47,14 +47,14 @@ PriorityFifoPolicy::~PriorityFifoPolicy()
 }
 
 void
-PriorityFifoPolicy::doAfterInsert(EntryRef i)
+PriorityFifoPolicy::doAfterInsert(EntryRef i, double popularity)
 {
   this->attachQueue(i);
   this->evictEntries();
 }
 
 void
-PriorityFifoPolicy::doAfterRefresh(EntryRef i)
+PriorityFifoPolicy::doAfterRefresh(EntryRef i, double popularity)
 {
   this->detachQueue(i);
   this->attachQueue(i);
@@ -67,7 +67,7 @@ PriorityFifoPolicy::doBeforeErase(EntryRef i)
 }
 
 void
-PriorityFifoPolicy::doBeforeUse(EntryRef i)
+PriorityFifoPolicy::doBeforeUse(EntryRef i, double popularity)
 {
   BOOST_ASSERT(m_entryInfoMap.find(i) != m_entryInfoMap.end());
 }

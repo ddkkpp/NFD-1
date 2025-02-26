@@ -23,19 +23,19 @@ public:
 
 private:
   void
-  doAfterInsert(EntryRef i, double popularity) final;
+  doAfterInsert(EntryRef i, double popularity) override;
 
   void
-  doAfterRefresh(EntryRef i, double popularity) final;
+  doAfterRefresh(EntryRef i, double popularity) override;
 
   void
-  doBeforeErase(EntryRef i) final;
+  doBeforeErase(EntryRef i) override;
 
   void
-  doBeforeUse(EntryRef i, double popularity) final;
+  doBeforeUse(EntryRef i, double popularity) override;
 
   void
-  evictEntries() final;
+  evictEntries() override;
 
 private:
   void
@@ -43,7 +43,7 @@ private:
 
 private:
   PopularityQueue m_queue;
-  std::unordered_map<EntryRef, PopularityQueue::iterator> m_entryMap;
+  std::map<EntryRef, PopularityQueue::iterator> m_entryMap;
 };
 
 } // namespace popularity

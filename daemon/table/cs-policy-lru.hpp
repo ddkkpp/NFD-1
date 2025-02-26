@@ -56,19 +56,19 @@ public:
 
 private:
   void
-  doAfterInsert(EntryRef i) final;
+  doAfterInsert(EntryRef i, double popularity) override;
 
   void
-  doAfterRefresh(EntryRef i) final;
+  doAfterRefresh(EntryRef i, double popularity) override;
 
   void
-  doBeforeErase(EntryRef i) final;
+  doBeforeErase(EntryRef i) override;
 
   void
-  doBeforeUse(EntryRef i) final;
+  doBeforeUse(EntryRef i, double popularity) override;
 
   void
-  evictEntries() final;
+  evictEntries() override;
 
 private:
   /** \brief moves an entry to the end of queue

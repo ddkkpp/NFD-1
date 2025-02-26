@@ -188,7 +188,17 @@ Cs::findImpl(const Interest& interest, double popularity) const
   return match;
 }
 
-
+template<typename HitCallback, typename MissCallback>
+void
+Cs::find(const Interest& interest, double popularity, HitCallback&& hit, MissCallback&& miss) const
+{
+  auto match = findImpl(interest, popularity);
+  if (match == m_table.end()) {
+    miss(interest);
+    return;
+  }
+  hit(interest, match->getData());
+}
 
 void
 Cs::dump()

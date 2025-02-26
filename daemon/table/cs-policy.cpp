@@ -76,7 +76,7 @@ void
 Policy::afterInsert(EntryRef i)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doAfterInsert(i);
+  this->doAfterInsert(i, 0.0); // 默认流行度为0.0
 }
 
 void
@@ -90,7 +90,7 @@ void
 Policy::afterRefresh(EntryRef i)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doAfterRefresh(i);
+  this->doAfterRefresh(i, 0.0); // 默认流行度为0.0
 }
 
 void
@@ -111,7 +111,7 @@ void
 Policy::beforeUse(EntryRef i)
 {
   BOOST_ASSERT(m_cs != nullptr);
-  this->doBeforeUse(i);
+  this->doBeforeUse(i, 0.0); // 默认流行度为0.0
 }
 
 void

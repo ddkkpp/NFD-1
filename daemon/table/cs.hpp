@@ -93,15 +93,8 @@ public:
 
   template<typename HitCallback, typename MissCallback>
   void
-  Cs::find(const Interest& interest, double popularity, HitCallback&& hit, MissCallback&& miss) const
-  {
-    auto match = findImpl(interest, popularity);
-    if (match == m_table.end()) {
-      miss(interest);
-      return;
-    }
-    hit(interest, match->getData());
-  }
+  find(const Interest& interest, double popularity, HitCallback&& hit, MissCallback&& miss) const;
+
   /** \brief get number of stored packets
    */
   size_t

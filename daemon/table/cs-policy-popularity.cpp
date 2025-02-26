@@ -14,25 +14,10 @@ PopularityPolicy::PopularityPolicy()
 }
 
 void
-PopularityPolicy::doAfterInsert(EntryRef i)
-{
-  double popularity = i->getData()->getPopularity();
-  this->insertToQueue(i, popularity);
-  this->evictEntries();
-}
-
-void
 PopularityPolicy::doAfterInsert(EntryRef i, double popularity)
 {
   this->insertToQueue(i, popularity);
   this->evictEntries();
-}
-
-void
-PopularityPolicy::doAfterRefresh(EntryRef i)
-{
-  double popularity = i->getData()->getPopularity();
-  this->insertToQueue(i, popularity);
 }
 
 void
@@ -49,13 +34,6 @@ PopularityPolicy::doBeforeErase(EntryRef i)
     m_queue.erase(it->second);
     m_entryMap.erase(it);
   }
-}
-
-void
-PopularityPolicy::doBeforeUse(EntryRef i)
-{
-  double popularity = i->getData()->getPopularity();
-  this->insertToQueue(i, popularity);
 }
 
 void
