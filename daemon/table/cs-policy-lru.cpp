@@ -25,6 +25,7 @@
 
 #include "cs-policy-lru.hpp"
 #include "cs.hpp"
+#include "common/logger.hpp"
 
 namespace nfd {
 namespace cs {
@@ -32,6 +33,7 @@ namespace lru {
 
 const std::string LruPolicy::POLICY_NAME = "lru";
 NFD_REGISTER_CS_POLICY(LruPolicy);
+NFD_LOG_INIT(LruPolicy);//有这个才能用NFD_LOG_DEBUG
 
 LruPolicy::LruPolicy()
   : Policy(POLICY_NAME)
@@ -70,6 +72,8 @@ LruPolicy::evictEntries()
   while (this->getCs()->size() > this->getLimit()) {
     BOOST_ASSERT(!m_queue.empty());
     EntryRef i = m_queue.front();
+    auto seq = i->getName().get(1).toSequenceNumber();
+    NFD_LOG_DEBUG("evict seq=" << seq);
     m_queue.pop_front();
     this->emitSignal(beforeEvict, i);
   }
@@ -82,7 +86,8 @@ LruPolicy::insertToQueue(EntryRef i, bool isNewEntry)
   bool isNew = false;
   // push_back only if i does not exist
   std::tie(it, isNew) = m_queue.push_back(i);
-
+  auto seq = i->getName().get(1).toSequenceNumber();
+  NFD_LOG_DEBUG("insert seq=" << seq << " isNew=" << isNew);
   BOOST_ASSERT(isNew == isNewEntry);
   if (!isNewEntry) {
     m_queue.relocate(m_queue.end(), it);

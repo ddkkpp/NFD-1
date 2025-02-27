@@ -177,7 +177,7 @@ public:
   void SetWatchDog(ns3::Time interval);
 
   ns3::Watchdog detectWD; 
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(5000);
+  ns3::Time watchdogPeriod = ns3::MilliSeconds(1000);
 
   std::map<uint64_t, int> numOfInterest;//每个内容名的请求数量
   std::map<uint64_t, std::unordered_set<uint64_t>> n_u;//每个内容名的不同用户

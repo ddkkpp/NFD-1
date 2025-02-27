@@ -60,6 +60,10 @@ void detectWDCallback(Forwarder *ptr)
     double mean_r = 0, sigma_r = 0, sum_r = 0, sum2_r = 0;
     double mean_rho = 0, sigma_rho = 0, sum_rho = 0, sum2_rho = 0;
 
+    if(ptr->m == 0)
+    {
+        return;
+    }
     for(auto it = ptr->n_u.begin(); it != ptr->n_u.end(); it++)
     {
        NFD_LOG_DEBUG("seq= "<<it->first);
@@ -117,7 +121,7 @@ void detectWDCallback(Forwarder *ptr)
     {
         if(av[it->first] > ptr->thr_av)
         {
-            ptr->malicious.insert(it->first);
+            //ptr->malicious.insert(it->first);
             NFD_LOG_DEBUG("detect seq= "<<it->first<<" is malicious, av= "<<av[it->first]);
         }
         if((r[it->first] > ptr->thr_r) && (ptr->rho[it->first] < ptr->thr_rho))
@@ -186,7 +190,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetWatchDog(ns3::MilliSeconds(5000));
+  SetWatchDog(ns3::MilliSeconds(1000));
 }
 
 Forwarder::~Forwarder() = default;
@@ -331,9 +335,21 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
     return;
   }
 
+  double popularity;
+  if(ingress.face.getRemoteUri().getScheme() == "netdev")
+  {
+      auto seq = interest.getName().get(1).toSequenceNumber();
+      popularity = rho[seq];
+      NFD_LOG_DEBUG("to find seq "<<seq<<" popularity= "<<popularity);
+  }
+  else{
+      popularity = 0;
+  }
+  popularity = 0;
+  
   // is pending?
   if (!pitEntry->hasInRecords()) {
-    m_cs.find(interest,
+    m_cs.find(interest, popularity,
               [=] (const Interest& i, const Data& d) { onContentStoreHit(i, ingress, pitEntry, d); },
               [=] (const Interest& i) { onContentStoreMiss(i, ingress, pitEntry); });
   }
@@ -509,6 +525,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   auto seq = data.getName().get(1).toSequenceNumber();
   double popularity = rho[seq];
   NFD_LOG_DEBUG("insert seq "<<seq<<" popularity= "<<popularity);
+  popularity = 0;
   m_cs.insert(data, popularity);
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
