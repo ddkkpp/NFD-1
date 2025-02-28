@@ -6,9 +6,10 @@ namespace nfd {
 namespace cs {
 namespace popularity {
 
+
+// PopularityPolicy implementation
 const std::string PopularityPolicy::POLICY_NAME = "popularity";
 NFD_REGISTER_CS_POLICY(PopularityPolicy);
-
 NFD_LOG_INIT(PopularityPolicy);//有这个才能用NFD_LOG_DEBUG
 
 PopularityPolicy::PopularityPolicy()
@@ -32,11 +33,9 @@ PopularityPolicy::doAfterRefresh(EntryRef i, double popularity)
 void
 PopularityPolicy::doBeforeErase(EntryRef i)
 {
-  auto it = m_entryMap.find(i);
-  if (it != m_entryMap.end()) {
-    m_queue.erase(it->second);
-    m_entryMap.erase(it);
-  }
+  // 使用第二个索引(按EntryRef)来删除
+  auto& entryIndex = m_queue.get<1>();
+  entryIndex.erase(i);
 }
 
 void
@@ -48,34 +47,34 @@ PopularityPolicy::doBeforeUse(EntryRef i, double popularity)
 void
 PopularityPolicy::evictEntries()
 {
+  NFD_LOG_INFO("evictEntries");
   BOOST_ASSERT(this->getCs() != nullptr);
+  
+  // 使用第一个索引(按popularity排序)来淘汰
+  auto& popularityIndex = m_queue.get<0>();
+  
   while (this->getCs()->size() > this->getLimit()) {
-    BOOST_ASSERT(!m_queue.empty());
-    auto it = m_queue.begin();
-    EntryRef i = it->second;
-    auto seq = i->getName().get(1).toSequenceNumber();
-    double popularity = it->first;
-    NFD_LOG_DEBUG("evict seq=" << seq << " popularity=" << popularity);
-    m_queue.erase(it);
-    this->emitSignal(beforeEvict, i);
+    if (popularityIndex.empty()) {
+      break;
+    }
+    
+    auto it = popularityIndex.begin(); // 获取popularity最小的条目
+    EntryRef entryToEvict = it->entry;
+    double popularity = it->popularity;
+    
+    NFD_LOG_DEBUG("evict " << entryToEvict->getName() << " popularity=" << popularity);
+    popularityIndex.erase(it);
+    this->emitSignal(beforeEvict, entryToEvict);
   }
 }
 
 void
 PopularityPolicy::insertToQueue(EntryRef i, double popularity)
 {
-  auto range = m_queue.equal_range(popularity);
-  for (auto it = range.first; it != range.second; ++it) {
-    if (it->second == i) {
-      auto seq = i->getName().get(1).toSequenceNumber();
-      NFD_LOG_DEBUG("insert seq=" << seq << " popularity=" << popularity);  
-      m_queue.erase(it);
-      m_entryMap.erase(i);
-      break;
-    }
-  }
-  auto it = m_queue.insert(std::make_pair(popularity, i));
-  m_entryMap[i] = it;
+  NFD_LOG_DEBUG("insert " << i->getName() << " popularity=" << popularity);
+  
+  // 如果entry已存在，会自动替换旧的
+  m_queue.insert(Entry(popularity, i));
 }
 
 } // namespace popularity

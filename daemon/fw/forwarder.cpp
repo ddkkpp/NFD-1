@@ -335,17 +335,16 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
     return;
   }
 
-  double popularity;
-  if(ingress.face.getRemoteUri().getScheme() == "netdev")
+  double popularity = 0;
+  auto prefix = interest.getName().getPrefix(-1);
+  //不要不经判断就读取seq，因为有可能是/localhost/
+  if(prefix.toUri() == "/prefix")
   {
       auto seq = interest.getName().get(1).toSequenceNumber();
       popularity = rho[seq];
-      NFD_LOG_DEBUG("to find seq "<<seq<<" popularity= "<<popularity);
+      //NFD_LOG_DEBUG("to find seq "<<seq<<" popularity= "<<popularity);
   }
-  else{
-      popularity = 0;
-  }
-  popularity = 0;
+  NFD_LOG_DEBUG("to find interest "<<interest.getName()<<" popularity= "<<popularity);
   
   // is pending?
   if (!pitEntry->hasInRecords()) {
@@ -522,10 +521,18 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
-  auto seq = data.getName().get(1).toSequenceNumber();
-  double popularity = rho[seq];
-  NFD_LOG_DEBUG("insert seq "<<seq<<" popularity= "<<popularity);
-  popularity = 0;
+  auto prefix = data.getName().getPrefix(-1);
+  double popularity = 0;
+  //不要不经判断就读取seq，因为有可能是/localhost/
+  if(prefix.toUri() == "/prefix")
+  {
+      auto seq = data.getName().get(1).toSequenceNumber();
+      popularity = rho[seq];
+      NFD_LOG_DEBUG("insert seq "<<seq<<" popularity= "<<popularity);
+  }
+  else{
+      NFD_LOG_DEBUG("insert prefix "<<prefix<<" popularity= "<<popularity);
+  }
   m_cs.insert(data, popularity);
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;

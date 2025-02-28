@@ -68,12 +68,12 @@ LruPolicy::doBeforeUse(EntryRef i, double popularity)
 void
 LruPolicy::evictEntries()
 {
+  NFD_LOG_INFO("evictEntries");
   BOOST_ASSERT(this->getCs() != nullptr);
   while (this->getCs()->size() > this->getLimit()) {
     BOOST_ASSERT(!m_queue.empty());
     EntryRef i = m_queue.front();
-    auto seq = i->getName().get(1).toSequenceNumber();
-    NFD_LOG_DEBUG("evict seq=" << seq);
+    NFD_LOG_DEBUG("evict " << i->getName());
     m_queue.pop_front();
     this->emitSignal(beforeEvict, i);
   }
@@ -82,12 +82,12 @@ LruPolicy::evictEntries()
 void
 LruPolicy::insertToQueue(EntryRef i, bool isNewEntry)
 {
+  NFD_LOG_INFO("insertToQueue");
   Queue::iterator it;
   bool isNew = false;
   // push_back only if i does not exist
   std::tie(it, isNew) = m_queue.push_back(i);
-  auto seq = i->getName().get(1).toSequenceNumber();
-  NFD_LOG_DEBUG("insert seq=" << seq << " isNew=" << isNew);
+  NFD_LOG_DEBUG("insert "<<i->getName()<<" isNew="<<isNew);
   BOOST_ASSERT(isNew == isNewEntry);
   if (!isNewEntry) {
     m_queue.relocate(m_queue.end(), it);
