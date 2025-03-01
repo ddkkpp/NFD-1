@@ -1264,12 +1264,20 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
-  auto seq = data.getName().get(1).toSequenceNumber();
-  if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
-    // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
-    NFD_LOG_DEBUG("CS insert data: " << data.getName());
+  //要确定是/prefix/seq类型的包，才能获取seq，否则运行初期rib会出现问题，导致接近10s报错cannot add FIB entry (10060 request timed out)
+  auto prefix = data.getName().getPrefix(-1).toUri();
+  if(prefix == "/prefix"){
+      auto seq = data.getName().get(1).toSequenceNumber();
+      if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
+        // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
+        NFD_LOG_DEBUG("CS insert data: " << data.getName());
+        m_cs.insert(data);
+      }
+  }
+  else{
     m_cs.insert(data);
   }
+
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
   std::multimap<std::pair<Face*, EndpointId>, std::shared_ptr<pit::Entry>> unsatisfiedPitEntries;
