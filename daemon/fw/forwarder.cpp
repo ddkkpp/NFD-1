@@ -901,10 +901,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
-      if(Malicious.find(ingress.face.getId()) !=Malicious.end())
-      {
-          NFD_LOG_DEBUG("faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
-          return;
+      //只在边缘节点丢弃包，也因为faceid是局部唯一值，恶意faceid在别的节点看来是另一个邻居
+      if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end())
+          if(Malicious.find(ingress.face.getId()) !=Malicious.end())
+          {
+              NFD_LOG_DEBUG("in edge node: "<<ptr->mynodeid<<" faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
+              return;
+          }
       }
       //获取seq一定要在判断scheme为非internal之后，否则会出现错误，
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
