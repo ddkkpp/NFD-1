@@ -189,6 +189,7 @@ public:
   std::vector<uint64_t> prevPopularSeqs;
   std::vector<uint64_t> preunPopularSeqs;
   int totalInterest=0;//总请求数量
+  int avgOmega = 0.8 / 5.2;
   std::unordered_set<uint64_t> malicious;//恶意
 
 

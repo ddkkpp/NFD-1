@@ -336,8 +336,9 @@ void detectWDCallback(Forwarder *ptr)
         } else {
             double tau = popularSeqs.size();
             double prevTau = ptr->prevPopularSeqs.size();
-            double xi = 0.8; // 设定阈值
-            if (std::abs(tau - prevTau) / prevTau > xi) {
+            double curOmega = tau - prevTau / prevTau;
+            NFD_LOG_DEBUG("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*5.2)
+            if (curOmega > ptr->avgOmega*5.2) {
                 NFD_LOG_DEBUG("FLA detetct");
                 for (const auto& seq : popularSeqs) {
                     if (std::find(ptr->prevPopularSeqs.begin(), ptr->prevPopularSeqs.end(), seq) == ptr->prevPopularSeqs.end()) {
@@ -346,6 +347,8 @@ void detectWDCallback(Forwarder *ptr)
                     }
                 }
             }
+            ptr->avgOmega = (ptr->avgOmiga * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
+            NFD_LOG_DEBUG("nextAvgOmega= "<<ptr->avgOmega);
         }
     }
 
