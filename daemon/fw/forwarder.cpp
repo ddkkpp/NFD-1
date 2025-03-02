@@ -73,7 +73,7 @@ void detectWDCallback(Forwarder *ptr)
             ptr->rho[it->first] = temp;
         }
         else{
-            ptr->rho[it->first] = ptr->lambda * ptr->rho[it->first] + (1 - ptr->lambda) * temp;
+            ptr->rho[it->first] = (1-ptr->lambda) * ptr->rho[it->first] + ptr->lambda * temp;
         }
         NFD_LOG_DEBUG("rho= "<<ptr->rho[it->first]);
         sum_rho += ptr->rho[it->first];

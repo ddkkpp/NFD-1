@@ -185,7 +185,7 @@ public:
   std::map<uint64_t, double> rho;//每个内容名的流行度
   int m=0;//请求总数量
   // std::map<uint64_t, double> av;//每个内容名的平均请求强度
-  double lambda = 0.8;//流行度衰减常数
+  double lambda = 0.8187;//流行度衰减常数,此处lambda对应论文中e^(-lambda)=e^(-0.2)=0.8187
   double thr_av;//平均请求强度的阈值
   double thr_r;//请求强度的阈值
   double thr_rho;//流行度的阈值
