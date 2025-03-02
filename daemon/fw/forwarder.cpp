@@ -445,12 +445,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       //获取seq一定要在判断scheme为非internal之后，否则会出现错误，
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
                 //而且不会对该函数报错，而是仍然运行成功，但是log显示兴趣包转发不出去
-      auto seq = interest.getName().get(1).toSequenceNumber();
-      if(malicious.find(seq) !=malicious.end())
-      {
-          NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, drop the interest");
-          return;
-      }
+      //防御策略是不缓存，而不是丢弃
+      // auto seq = interest.getName().get(1).toSequenceNumber();
+      // if(malicious.find(seq) !=malicious.end())
+      // {
+      //     NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, drop the interest");
+      //     return;
+      // }
 
       totalInterest++;
       //统计seq的数目到numOfInterest
@@ -722,7 +723,22 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
-  m_cs.insert(data);
+  //防御策略是不缓存
+  auto prefix = data.getName().getPrefix(-1);
+  NFD_LOG_DEBUG("prefix= "<<prefix);
+  if(prefix.toUri() == "/prefix"){
+      auto seq = interest.getName().get(1).toSequenceNumber();
+      if(malicious.find(seq) !=malicious.end())
+      {
+          NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, donnot cache");
+      }
+      else{
+        m_cs.insert(data);
+      }
+  }
+  else{
+      m_cs.insert(data);
+  }
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
   std::multimap<std::pair<Face*, EndpointId>, std::shared_ptr<pit::Entry>> unsatisfiedPitEntries;
