@@ -337,7 +337,7 @@ void detectWDCallback(Forwarder *ptr)
             double tau = popularSeqs.size();
             double prevTau = ptr->prevPopularSeqs.size();
             double curOmega = tau - prevTau / prevTau;
-            NFD_LOG_DEBUG("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*5.2)
+            NFD_LOG_DEBUG("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*5.2);
             if (curOmega > ptr->avgOmega*5.2) {
                 NFD_LOG_DEBUG("FLA detetct");
                 for (const auto& seq : popularSeqs) {
@@ -347,7 +347,7 @@ void detectWDCallback(Forwarder *ptr)
                     }
                 }
             }
-            ptr->avgOmega = (ptr->avgOmiga * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
+            ptr->avgOmega = (ptr->avgOmega * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
             NFD_LOG_DEBUG("nextAvgOmega= "<<ptr->avgOmega);
         }
     }
@@ -446,7 +446,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
                 //而且不会对该函数报错，而是仍然运行成功，但是log显示兴趣包转发不出去
       //防御策略是不缓存，而不是丢弃
-      // auto seq = interest.getName().get(1).toSequenceNumber();
+      auto seq = interest.getName().get(1).toSequenceNumber();
       // if(malicious.find(seq) !=malicious.end())
       // {
       //     NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, drop the interest");
@@ -727,7 +727,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   auto prefix = data.getName().getPrefix(-1);
   NFD_LOG_DEBUG("prefix= "<<prefix);
   if(prefix.toUri() == "/prefix"){
-      auto seq = interest.getName().get(1).toSequenceNumber();
+      auto seq = data.getName().get(1).toSequenceNumber();
       if(malicious.find(seq) !=malicious.end())
       {
           NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, donnot cache");
