@@ -901,6 +901,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   {
       //只在边缘节点丢弃包，也因为faceid是局部唯一值，恶意faceid在别的节点看来是另一个邻居
       if(edgeId.find(mynodeid)!=edgeId.end())
+      {
           if(Malicious.find(ingress.face.getId()) !=Malicious.end())
           {
               NFD_LOG_DEBUG("in edge node: "<<mynodeid<<" faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
@@ -1028,7 +1029,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         //     NFD_LOG_DEBUG("content = "<<*it);
         //   }
         // }
-      
+      }
   }
 
 
