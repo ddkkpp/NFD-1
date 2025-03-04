@@ -895,17 +895,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 {
   // receive Interest
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
-
-
   NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
       //只在边缘节点丢弃包，也因为faceid是局部唯一值，恶意faceid在别的节点看来是另一个邻居
-      if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end())
+      if(edgeId.find(mynodeid)!=edgeId.end())
           if(Malicious.find(ingress.face.getId()) !=Malicious.end())
           {
-              NFD_LOG_DEBUG("in edge node: "<<ptr->mynodeid<<" faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
+              NFD_LOG_DEBUG("in edge node: "<<mynodeid<<" faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
               return;
           }
       }
@@ -1030,7 +1028,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         //     NFD_LOG_DEBUG("content = "<<*it);
         //   }
         // }
-      }
+      
   }
 
 
