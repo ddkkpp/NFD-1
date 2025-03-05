@@ -38,6 +38,7 @@
 #include "table/strategy-choice.hpp"
 #include "table/dead-nonce-list.hpp"
 #include "table/network-region-table.hpp"
+#include "ns3/watchdog.h"
 
 #include <queue>
 #include <map>
@@ -50,7 +51,6 @@
 #include <iostream>
 #include <sstream>
 #include <openssl/md5.h>
-#include "ns3/watchdog.h"
 #include "ns3/nstime.h"
 #include "ns3/simulator.h"
 #include "ns3/core-module.h"
@@ -156,6 +156,8 @@ public:
   setConfigFile(ConfigFile& configFile);
 
 public:
+
+
   /** \brief trigger before PIT entry is satisfied
    *  \sa Strategy::beforeSatisfyInterest
    */
@@ -241,10 +243,13 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
 //  dbscan(std::vector<Point>& points, double eps, int minPts, int k);
 
   // 声明SetWatchDog函数
-  void SetWatchDog(ns3::Time interval);
+  void SetDetectWatchDog(ns3::Time interval);
+  void SetMetricsWatchDog(ns3::Time interval);
 
   ns3::Watchdog detectWD; 
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(1000);
+  ns3::Time detectWatchdogPeriod = ns3::MilliSeconds(1000);
+  ns3::Watchdog computeForwarderMetricsWD;
+  ns3::Time metricsWatchdogPeriod = ns3::MilliSeconds(500);
 
   std::map<FaceId, std::vector<uint64_t>> lastContentSeriesOfFace;//端口在上个周期内的请求的内容序列（假设前缀都一样，只统计序列号）
   std::map<FaceId, std::vector<int64_t>> lastIntervalSeriesOfFace;//端口在上个周期内的请求时间间隔序列
@@ -275,14 +280,24 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::set<FaceId> Malicious;//恶意
 
 
-  int mynodeid=0;//节点id
-  std::unordered_set<int> edgeId={2};//消费者边缘节点
+  int mynodeid=10000;//节点id,取10000避免与其他节点id重复
+  bool isEdgeNode = false;
+  bool isConsumerNode = false;
 
   //space-saving算法的存储结构
   std::unordered_map<uint64_t, int> curSequenceMap;
   std::unordered_map<uint64_t, int> lastSequenceMap;
   std::unordered_map<uint64_t, int> lastLastSequenceMap;
   size_t sequenceMapCapacity = 200;
+
+  int numOfReceivedNormalUserInterest = 0;//收到正常用户请求的数量
+  int numOfHitNormalUserInterest = 0;//正常用户请求命中的数量
+
+  int numOfUnpopularData = 0;//遇到不流行内容的数量
+  int numOfPopularData = 0;//遇到流行内容的数量
+  int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
+  int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
+
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
@@ -375,6 +390,7 @@ private:
   void
   processConfig(const ConfigSection& configSection, bool isDryRun,
                 const std::string& filename);
+
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   /**

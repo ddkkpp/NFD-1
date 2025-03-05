@@ -154,6 +154,15 @@ GenericLinkService::assignSequences(std::vector<lp::Packet>& pkts)
 void
 GenericLinkService::encodeLpFields(const ndn::PacketBase& netPkt, lp::Packet& lpPacket)
 {
+
+  auto consumerIdTag = netPkt.getTag<lp::ConsumerIdTag>();
+  if (consumerIdTag != nullptr) {
+    lpPacket.add<lp::ConsumerIdField>(*consumerIdTag);
+  }
+  else {
+    lpPacket.add<lp::ConsumerIdField>(0);
+  }
+
   if (m_options.allowLocalFields) {
     auto incomingFaceIdTag = netPkt.getTag<lp::IncomingFaceIdTag>();
     if (incomingFaceIdTag != nullptr) {
@@ -380,6 +389,10 @@ GenericLinkService::decodeInterest(const Block& netPkt, const lp::Packet& firstP
   // forwarding expects Interest to be created with make_shared
   auto interest = make_shared<Interest>(netPkt);
 
+  if (firstPkt.has<lp::ConsumerIdField>()) {
+    interest->setTag(make_shared<lp::ConsumerIdTag>(firstPkt.get<lp::ConsumerIdField>()));
+  }
+  
   // Increment HopCount
   if (firstPkt.has<lp::HopCountTagField>()) {
     interest->setTag(make_shared<lp::HopCountTag>(firstPkt.get<lp::HopCountTagField>() + 1));

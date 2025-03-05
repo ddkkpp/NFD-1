@@ -53,7 +53,7 @@ const std::string CFG_FORWARDER = "forwarder";
 void detectWDCallback(Forwarder *ptr)
 {
     NFD_LOG_DEBUG("detectWDCallback");
-    if(ptr->edgeId.find(ptr->mynodeid)!=ptr->edgeId.end())
+    if(ptr->isEdgeNode)
     {
         if(ptr->nowIntervalSeriesOfFace.empty())
         {
@@ -68,29 +68,29 @@ void detectWDCallback(Forwarder *ptr)
 
             NFD_LOG_DEBUG("before pre-processing data");
             //打印lastIntervalSeriesOfFace
-            NFD_LOG_DEBUG("lastIntervalSeriesOfFace: ");
-            for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
-            {
-                NFD_LOG_DEBUG("Face ID: " << entry.first);
-                std::ostringstream oss;
-                for (const auto& val : entry.second) {
-                    oss << val << " ";
-                }
-                NFD_LOG_DEBUG(oss.str());
-            }
+            // NFD_LOG_DEBUG("lastIntervalSeriesOfFace: ");
+            // for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
+            // {
+            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     std::ostringstream oss;
+            //     for (const auto& val : entry.second) {
+            //         oss << val << " ";
+            //     }
+            //     NFD_LOG_DEBUG(oss.str());
+            // }
 
             //打印lastContentSeriesOfFace
-            NFD_LOG_DEBUG("lastContentSeriesOfFace: ");
-            for (const auto& entry : ptr->lastContentSeriesOfFace) 
-            {
-                NFD_LOG_DEBUG("Face ID: " << entry.first);
-                std::ostringstream oss;
-                for (const uint64_t& content : entry.second) 
-                {
-                    oss << content << " ";
-                }
-                NFD_LOG_DEBUG(oss.str());
-            }
+            // NFD_LOG_DEBUG("lastContentSeriesOfFace: ");
+            // for (const auto& entry : ptr->lastContentSeriesOfFace) 
+            // {
+            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     std::ostringstream oss;
+            //     for (const uint64_t& content : entry.second) 
+            //     {
+            //         oss << content << " ";
+            //     }
+            //     NFD_LOG_DEBUG(oss.str());
+            // }
 
             //得到当前face所属近邻区域的首个face在当前窗口的首个采样元素到其首个元素的时间间隔，从前到后减去face的interval，直到间隔一致
             NFD_LOG_DEBUG("erase interval from left");
@@ -115,7 +115,7 @@ void detectWDCallback(Forwarder *ptr)
                     {
                         break;
                     }
-                    NFD_LOG_DEBUG("earse interval: " << *it);
+                    //NFD_LOG_DEBUG("earse interval: " << *it);
                     entry.second.erase(it);
                     ptr->lastContentSeriesOfFace[faceId].erase(ptr->lastContentSeriesOfFace[faceId].begin());
                     it = entry.second.begin();
@@ -219,28 +219,28 @@ void detectWDCallback(Forwarder *ptr)
             NFD_LOG_DEBUG("after pre-processing data");
             //重新打印lastIntervalSeriesOfFace
             NFD_LOG_DEBUG("lastIntervalSeriesOfFace: ");
-            for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
-            {
-                NFD_LOG_DEBUG("Face ID: " << entry.first);
-                std::ostringstream oss;
-                for (const int64_t& interval : entry.second) 
-                {
-                    oss << interval << " ";
-                }
-                NFD_LOG_DEBUG("  " << oss.str());
-            }
+            // for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
+            // {
+            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     std::ostringstream oss;
+            //     for (const int64_t& interval : entry.second) 
+            //     {
+            //         oss << interval << " ";
+            //     }
+            //     NFD_LOG_DEBUG("  " << oss.str());
+            // }
             //重新打印lastContentSeriesOfFace
             NFD_LOG_DEBUG("lastContentSeriesOfFace: ");
-            for (const auto& entry : ptr->lastContentSeriesOfFace) 
-            {
-                NFD_LOG_DEBUG("Face ID: " << entry.first);
-                std::ostringstream oss;
-                for (const uint64_t& content : entry.second) 
-                {
-                    oss << content << " ";
-                }
-                NFD_LOG_DEBUG("  " << oss.str());
-            }
+            // for (const auto& entry : ptr->lastContentSeriesOfFace) 
+            // {
+            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     std::ostringstream oss;
+            //     for (const uint64_t& content : entry.second) 
+            //     {
+            //         oss << content << " ";
+            //     }
+            //     NFD_LOG_DEBUG("  " << oss.str());
+            // }
 
             //准备SimpleClustering聚类的数据
             std::map<FaceId, size_t> intervalLengths;
@@ -353,26 +353,26 @@ void detectWDCallback(Forwarder *ptr)
             ptr->lastSequenceMap = ptr->curSequenceMap;
             ptr->curSequenceMap.clear();
             //打印lastLastSequenceMap
-            NFD_LOG_DEBUG("lastLastSequenceMap: ");
-            for (const auto& entry : ptr->lastLastSequenceMap) {
-                NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
-            }
+            // NFD_LOG_DEBUG("lastLastSequenceMap: ");
+            // for (const auto& entry : ptr->lastLastSequenceMap) {
+            //     NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
+            // }
             //打印lastSequenceMap
-            NFD_LOG_DEBUG("lastSequenceMap: ");
-            for (const auto& entry : ptr->lastSequenceMap) {
-                NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
-            }
+            // NFD_LOG_DEBUG("lastSequenceMap: ");
+            // for (const auto& entry : ptr->lastSequenceMap) {
+            //     NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
+            // }
 
             for (FaceId faceId : ptr->finalSuspect) {
                 int count = 0;
                 for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
                     if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
                         ++count;
-                        NFD_LOG_DEBUG("is popular");
+                        //NFD_LOG_DEBUG("is popular");
                     }
                     else
                     {
-                        NFD_LOG_DEBUG("is not popular");
+                        //NFD_LOG_DEBUG("is not popular");
                     }
                 }
                 if(ptr->lastContentSeriesOfFace[faceId].size()!=0)//注意不能除以零
@@ -395,11 +395,11 @@ void detectWDCallback(Forwarder *ptr)
                     NFD_LOG_DEBUG("content: " << content);
                     if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
                         ++count;
-                        NFD_LOG_DEBUG("is popular");
+                        //NFD_LOG_DEBUG("is popular");
                     }
                     else
                     {
-                        NFD_LOG_DEBUG("is not popular");
+                        //NFD_LOG_DEBUG("is not popular");
                     }
                 }
                 if(entry.second.size()!=0)
@@ -411,7 +411,7 @@ void detectWDCallback(Forwarder *ptr)
 
         }
     }
-    ptr->detectWD.Ping(ptr->watchdogPeriod);
+    ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
 
 //函数前面要加上类名Forwarder，但声明不需要，因为已经在类中
@@ -472,16 +472,16 @@ Forwarder::convertToBoolSeries(const std::map<FaceId, std::vector<uint64_t>>& co
         }
         ++col;
     }
-    //打印布尔矩阵
-    NFD_LOG_DEBUG("boolMatrix: ");
-    //按列打印
-    std::ostringstream oss;
-    for(size_t i = 0; i < boolMatrix[0].size(); ++i) {
-        for(size_t j = 0; j < boolMatrix.size(); ++j) {
-            oss << boolMatrix[j][i];
-        }
-        NFD_LOG_DEBUG(oss.str());
-    }
+    // //打印布尔矩阵
+    // NFD_LOG_DEBUG("boolMatrix: ");
+    // //按列打印
+    // std::ostringstream oss;
+    // for(size_t i = 0; i < boolMatrix[0].size(); ++i) {
+    //     for(size_t j = 0; j < boolMatrix.size(); ++j) {
+    //         oss << boolMatrix[j][i];
+    //     }
+    //     NFD_LOG_DEBUG(oss.str());
+    // }
 
     return boolMatrix;
 }
@@ -521,12 +521,12 @@ Forwarder::sigMatrixGen(const std::vector<std::vector<bool>>& inputMatrix, int n
         auto sig = sigGen(inputMatrix);
         result.push_back(sig);
         //打印签名矩阵
-        NFD_LOG_DEBUG("Signature ");
-        std::ostringstream oss;
-        for (size_t j = 0; j < sig.size(); ++j) {
-            oss << sig[j] << " ";
-        }
-        NFD_LOG_DEBUG(oss.str());
+        // NFD_LOG_DEBUG("Signature ");
+        // std::ostringstream oss;
+        // for (size_t j = 0; j < sig.size(); ++j) {
+        //     oss << sig[j] << " ";
+        // }
+        // NFD_LOG_DEBUG(oss.str());
     }
     return result;
 }
@@ -556,17 +556,17 @@ Forwarder::minHashLSH(const std::vector<std::vector<bool>>& inputMatrix, int b, 
 
     while (end <= n) {
         ++count;
-        NFD_LOG_DEBUG("count: " << count);
+        //NFD_LOG_DEBUG("count: " << count);
         for (size_t colNum = 0; colNum < sigMatrix[0].size(); ++colNum) {
-            NFD_LOG_DEBUG("colNum: " << colNum);
+            //NFD_LOG_DEBUG("colNum: " << colNum);
             std::ostringstream oss;
             for (int i = begin; i < end; ++i) {
                 oss << sigMatrix[i][colNum] << ",";
             }
             oss << count;
-            NFD_LOG_DEBUG("band: " << oss.str());
+            //NFD_LOG_DEBUG("band: " << oss.str());
             auto md5 = computeMD5(oss.str());
-            NFD_LOG_DEBUG("MD5: " << md5);
+            //NFD_LOG_DEBUG("MD5: " << md5);
             std::string tag = md5;
 
             if (hashBuckets.find(tag) == hashBuckets.end()) {
@@ -580,15 +580,15 @@ Forwarder::minHashLSH(const std::vector<std::vector<bool>>& inputMatrix, int b, 
     }
 
     // LSH聚类结果（未合并）
-    NFD_LOG_DEBUG("LSH output before merging: ");
-    for (const auto& bucket : hashBuckets) {
-        NFD_LOG_DEBUG(" LSH Bucket " << bucket.first << ":");
-        std::ostringstream oss;
-        for (FaceId faceId : bucket.second) {
-            oss << faceId << " ";
-        }
-        NFD_LOG_DEBUG("  Face IDs: " << oss.str());
-    }
+    // NFD_LOG_DEBUG("LSH output before merging: ");
+    // for (const auto& bucket : hashBuckets) {
+    //     NFD_LOG_DEBUG(" LSH Bucket " << bucket.first << ":");
+    //     std::ostringstream oss;
+    //     for (FaceId faceId : bucket.second) {
+    //         oss << faceId << " ";
+    //     }
+    //     NFD_LOG_DEBUG("  Face IDs: " << oss.str());
+    // }
 
     // LSH聚类结果中，把存在两个以上元素的bucket筛选出来，对这些bucket，如果包含的元素有交叉，则所在的bucket的所有元素放在一类，输出有多少类，且每类的face是什么
     std::map<int, std::vector<FaceId>> mergedClusters;
@@ -831,17 +831,14 @@ getDefaultStrategyName()
 }
 
 Forwarder::Forwarder(FaceTable& faceTable)
-  : m_faceTable(faceTable)
+  : curStartTime(ns3::Seconds(0))
+  , m_faceTable(faceTable)
   , m_unsolicitedDataPolicy(make_unique<fw::DefaultUnsolicitedDataPolicy>())
   , m_fib(m_nameTree)
   , m_pit(m_nameTree)
   , m_measurements(m_nameTree)
   , m_strategyChoice(*this)
   , m_csFace(face::makeNullFace(FaceUri("contentstore://")))
-  , curStartTime(ns3::Seconds(0))
-  , curSequenceMap(sequenceMapCapacity) // 初始化unordered_map，容量为sequenceMapCapacity
-  , lastSequenceMap(sequenceMapCapacity) // 初始化unordered_map，容量为sequenceMapCapacity
-  , lastLastSequenceMap(sequenceMapCapacity) // 初始化unordered_map，容量为sequenceMapCapacity
 {
   m_faceTable.addReserved(m_csFace, face::FACEID_CONTENT_STORE);
 
@@ -874,13 +871,19 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetWatchDog(ns3::MilliSeconds(1000));
+    // 在构造函数体内设置容量
+  curSequenceMap.reserve(sequenceMapCapacity);
+  lastSequenceMap.reserve(sequenceMapCapacity);
+  lastLastSequenceMap.reserve(sequenceMapCapacity);
+
+  SetDetectWatchDog(ns3::MilliSeconds(1000));
+  SetMetricsWatchDog(ns3::MilliSeconds(500));
 }
 
 Forwarder::~Forwarder() = default;
 
 void
-Forwarder::SetWatchDog(ns3::Time t)
+Forwarder::SetDetectWatchDog(ns3::Time t)
 {
     if (t > ns3::MilliSeconds(0))
     {
@@ -897,10 +900,14 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
   NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
+  if(ingress.face.getRemoteUri().getScheme() == "appFace"){
+    NFD_LOG_DEBUG("is consumer node");
+    isConsumerNode = true;//消费者节点的nodeid
+  }
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
       //只在边缘节点丢弃包，也因为faceid是局部唯一值，恶意faceid在别的节点看来是另一个邻居
-      if(edgeId.find(mynodeid)!=edgeId.end())
+      if(isEdgeNode)
       {
           if(Malicious.find(ingress.face.getId()) !=Malicious.end())
           {
@@ -908,6 +915,28 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
               return;
           }
       }
+
+      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+      auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
+      // 提取高16位
+      uint32_t highBits =  tagRead >> 48 & 0xFFFFFFFF;
+      //提取中16位
+      uint32_t middleBits = tagRead >> 32 & 0x0000FFFF;
+      // 提取低32位
+      uint32_t lowBits = tagRead & 0xFFFFFFFF;
+      NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+      if(highBits ==0){
+        NFD_LOG_DEBUG("normal user interest received");
+        numOfReceivedNormalUserInterest++;
+      }
+      if(middleBits == 1){
+        NFD_LOG_DEBUG("is edge node");
+        isEdgeNode = true;
+      }
+      //中间16位设置为0，使得接下来的节点不会再判断为edge节点
+      uint64_t tagWrite = tagRead & 0xFF00FFFF;
+      interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
+
       //获取seq一定要在判断scheme为非internal之后，否则会出现错误，
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
                 //而且不会对该函数报错，而是仍然运行成功，但是log显示兴趣包转发不出去
@@ -940,8 +969,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
       mynode = p2pNetDevice->GetNode();
       mynodeid = mynode->GetId();
-      NFD_LOG_DEBUG("nodeid"<<mynodeid);
-      if(edgeId.find(mynodeid)!=edgeId.end())
+      NFD_LOG_DEBUG("nodeid= "<<mynodeid);
+      if(isEdgeNode)
       {
         //第一个包
         if(hasInterestOfFace.find(faceId)==hasInterestOfFace.end())
@@ -1171,11 +1200,23 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
                              const shared_ptr<pit::Entry>& pitEntry, const Data& data)
 {
   NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
+
+  auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+  uint32_t highBits = ((*consumerId) >> 32) & 0xFFFFFFFF; // 提取高32位
+  uint32_t lowBits = (*consumerId) & 0xFFFFFFFF;          // 提取低32位
+  NFD_LOG_DEBUG("Tag value: high32=" << highBits << ", low32=" << lowBits);
+  if(highBits ==0){
+     NFD_LOG_DEBUG("normal user interest hit");
+     numOfHitNormalUserInterest++;
+  }
+
   ++m_counters.nCsHits;
   afterCsHit(interest, data);
 
   data.setTag(make_shared<lp::IncomingFaceIdTag>(face::FACEID_CONTENT_STORE));
   data.setTag(interest.getTag<lp::PitToken>());
+  //若缓存命中，则hopcount置为0
+  data.setTag(make_shared<lp::HopCountTag>(0));
   // FIXME Should we lookup PIT for other Interests that also match the data?
 
   pitEntry->isSatisfied = true;
@@ -1266,14 +1307,32 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     return;
   }
 
+
   //要确定是/prefix/seq类型的包，才能获取seq，否则运行初期rib会出现问题，导致接近10s报错cannot add FIB entry (10060 request timed out)
-  auto prefix = data.getName().getPrefix(-1).toUri();
-  if(prefix == "/prefix"){
+  auto prefix = data.getName().getPrefix(-1);
+  NFD_LOG_DEBUG("prefix= "<<prefix);
+  if(prefix.toUri() == "/prefix"){
       auto seq = data.getName().get(1).toSequenceNumber();
+      //统计流行内容和非流行内容收到数目
+      if(seq<=2000){
+        numOfPopularData++;
+      }
+      else{
+        numOfUnpopularData++;
+      }
       if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
         // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
         NFD_LOG_DEBUG("CS insert data: " << data.getName());
         m_cs.insert(data);
+      }
+      else{
+      //统计流行内容和非流行内容不缓存数目
+        if(seq<=2000){
+            numOfNotCacheOfPopularData++;
+          }
+          else{
+            numOfNotCacheOfUnpopularData++;
+          }
       }
   }
   else{
@@ -1590,6 +1649,68 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
   if (!isDryRun) {
     m_config = config;
   }
+}
+
+void computeForwarderMetricsWDCallback(Forwarder *ptr)
+{
+  if(ptr->isConsumerNode){
+    //消费者节点
+    return;
+  }
+  if(ptr->numOfUnpopularData + ptr->numOfPopularData == 0){
+    //未启动节点（还没有发起攻击的攻击者）
+    return;
+  }
+
+  double normalHitRatio = 0;
+  NFD_LOG_DEBUG("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+  NFD_LOG_DEBUG("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+  if(ptr->numOfReceivedNormalUserInterest!=0){
+    normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
+    NFD_LOG_DEBUG("normalHitRatio= "<<normalHitRatio);
+  }
+
+  double detectionRatio = 0;
+  NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+  NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+  if(ptr->numOfUnpopularData!=0){
+    normalHitRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+    NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
+  }
+
+  double falseAlarmRatio = 0;
+  NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
+  NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+  if(ptr->numOfPopularData!=0){
+    normalHitRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+    NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
+  }
+
+  std::ofstream outFile("/home/dkp/ndnSIM(cpa-ours)/ns-3/ForwarderMetrics.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  if (outFile.is_open()) {
+    outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  }
+  outFile.close();
+
+  ptr->numOfHitNormalUserInterest = 0;
+  ptr->numOfReceivedNormalUserInterest = 0;
+  ptr->numOfNotCacheOfUnpopularData = 0;
+  ptr->numOfUnpopularData = 0;
+  ptr->numOfNotCacheOfPopularData = 0;
+  ptr->numOfPopularData = 0;
+
+  ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+}
+
+void 
+Forwarder::SetMetricsWatchDog(ns3::Time t)
+{
+    if (t > ns3::MilliSeconds(0))
+    {
+        computeForwarderMetricsWD.Ping(t);
+        computeForwarderMetricsWD.SetFunction(computeForwarderMetricsWDCallback);
+        computeForwarderMetricsWD.SetArguments<Forwarder *>(this);
+    }
 }
 
 } // namespace nfd
