@@ -66,26 +66,26 @@ void detectWDCallback(Forwarder *ptr)
     }
     for(auto it = ptr->n_u.begin(); it != ptr->n_u.end(); it++)
     {
-       NFD_LOG_DEBUG("seq= "<<it->first);
+       //NFD_LOG_DEBUG("seq= "<<it->first);
        double temp = double(it->second.size()) / double((ptr->n).size());
-       NFD_LOG_DEBUG("ratio of user number= "<<temp);
+       //NFD_LOG_DEBUG("ratio of user number= "<<temp);
        if(ptr->wdCount==1){
             ptr->rho[it->first] = temp;
         }
         else{
             ptr->rho[it->first] = (1-ptr->lambda) * ptr->rho[it->first] + ptr->lambda * temp;
         }
-        NFD_LOG_DEBUG("rho= "<<ptr->rho[it->first]);
+        //NFD_LOG_DEBUG("rho= "<<ptr->rho[it->first]);
         sum_rho += ptr->rho[it->first];
         sum2_rho += ptr->rho[it->first] * ptr->rho[it->first];
 
         r[it->first] = double(ptr->numOfInterest[it->first]) / double(ptr->m);
-        NFD_LOG_DEBUG("r= "<<r[it->first]);
+        //NFD_LOG_DEBUG("r= "<<r[it->first]);
         sum_r += r[it->first];
         sum2_r += r[it->first] * r[it->first];
 
         av[it->first] = r[it->first] / ptr->rho[it->first];
-        NFD_LOG_DEBUG("av= "<<av[it->first]);
+        //NFD_LOG_DEBUG("av= "<<av[it->first]);
         sum_av += av[it->first];
         sum2_av += av[it->first] * av[it->first];
     }
@@ -121,8 +121,9 @@ void detectWDCallback(Forwarder *ptr)
     {
         if(av[it->first] > ptr->thr_av)
         {
+            //不使用av来判断
             //ptr->malicious.insert(it->first);
-            NFD_LOG_DEBUG("detect seq= "<<it->first<<" is malicious, av= "<<av[it->first]);
+            //NFD_LOG_DEBUG("detect seq= "<<it->first<<" is malicious, av= "<<av[it->first]);
         }
         if((r[it->first] > ptr->thr_r) && (ptr->rho[it->first] < ptr->thr_rho))
         {
@@ -140,7 +141,7 @@ void detectWDCallback(Forwarder *ptr)
     //重置m
     ptr->m = 0;
     
-    ptr->detectWD.Ping(ptr->watchdogPeriod);
+    ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
 
 
@@ -190,13 +191,14 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetWatchDog(ns3::MilliSeconds(1000));
+  SetDetectWatchDog(ns3::MilliSeconds(1000));
+  SetMetricsWatchDog(ns3::MilliSeconds(500));
 }
 
 Forwarder::~Forwarder() = default;
 
 void
-Forwarder::SetWatchDog(ns3::Time t)
+Forwarder::SetDetectWatchDog(ns3::Time t)
 {
     if (t > ns3::MilliSeconds(0))
     {
@@ -211,10 +213,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 {
   // receive Interest
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
-
-
-
   NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
+  if(ingress.face.getRemoteUri().getScheme() == "appFace"){
+    NFD_LOG_DEBUG("is consumer node");
+    isConsumerNode = true;//消费者节点的nodeid
+  }
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
@@ -228,6 +231,27 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           return;
       }
 
+      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+      auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
+      // 提取高16位
+      uint32_t highBits =  tagRead >> 48 & 0xFFFFFFFF;
+      //提取中16位
+      uint32_t middleBits = tagRead >> 32 & 0x0000FFFF;
+      // 提取低32位
+      uint32_t lowBits = tagRead & 0xFFFFFFFF;
+      NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+      if(highBits ==0){
+        NFD_LOG_DEBUG("normal user interest received");
+        numOfReceivedNormalUserInterest++;
+      }
+      if(middleBits == 1){
+        NFD_LOG_DEBUG("is edge node");
+        isEdgeNode = true;
+      }
+      //中间16位设置为0，使得接下来的节点不会再判断为edge节点
+      uint64_t tagWrite = tagRead & 0xFF00FFFF;
+      interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
+
       //统计seq的数目到numOfInterest
       if(numOfInterest.find(seq) == numOfInterest.end())
       {
@@ -238,15 +262,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           numOfInterest[seq]++;
       }
 
-      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
-      if(consumerId != nullptr)
-      {
-          NFD_LOG_DEBUG("consumerId= "<<*consumerId);
-      }
-      else
-      {
-          NFD_LOG_DEBUG("consumerId is null");
-      }
       //统计每个seq的不同consumerId数量
       if(n_u.find(seq) == n_u.end())
       {
@@ -426,11 +441,23 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
                              const shared_ptr<pit::Entry>& pitEntry, const Data& data)
 {
   NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
+
+  auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+  uint32_t highBits = ((*consumerId) >> 32) & 0xFFFFFFFF; // 提取高32位
+  uint32_t lowBits = (*consumerId) & 0xFFFFFFFF;          // 提取低32位
+  NFD_LOG_DEBUG("Tag value: high32=" << highBits << ", low32=" << lowBits);
+  if(highBits ==0){
+     NFD_LOG_DEBUG("normal user interest hit");
+     numOfHitNormalUserInterest++;
+  }
+
   ++m_counters.nCsHits;
   afterCsHit(interest, data);
 
   data.setTag(make_shared<lp::IncomingFaceIdTag>(face::FACEID_CONTENT_STORE));
   data.setTag(interest.getTag<lp::PitToken>());
+  //若缓存命中，则hopcount置为0
+  data.setTag(make_shared<lp::HopCountTag>(0));
   // FIXME Should we lookup PIT for other Interests that also match the data?
 
   pitEntry->isSatisfied = true;
@@ -522,6 +549,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
   }
 
   auto prefix = data.getName().getPrefix(-1);
+  NFD_LOG_DEBUG("prefix= "<<prefix);
   double popularity = 0;
   //不要不经判断就读取seq，因为有可能是/localhost/
   if(prefix.toUri() == "/prefix")
@@ -534,6 +562,36 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       NFD_LOG_DEBUG("insert prefix "<<prefix<<" popularity= "<<popularity);
   }
   m_cs.insert(data, popularity);
+
+  if(prefix.toUri() == "/prefix"){
+      auto seq = data.getName().get(1).toSequenceNumber();
+      //统计流行内容和非流行内容收到数目
+      if(seq<=2000){
+        numOfPopularData++;
+      }
+      else{
+        numOfUnpopularData++;
+      }
+      shared_ptr<Name> nameWithSequence = make_shared<Name>(data.getName());
+      nameWithSequence->appendSequenceNumber(seq);
+      shared_ptr<Interest> interest = make_shared<Interest>();
+      interest->setNonce(0);
+      interest->setName(*nameWithSequence);
+      //用find函数判断是否缓存成功
+      m_cs.find(*interest, popularity,
+        [&](const Interest& interest, const Data& data) {
+          NFD_LOG_DEBUG("CS insertion succeeded for " << data.getName());
+        },
+        [&](const Interest& interest) {
+          NFD_LOG_DEBUG("CS insertion failed for " << interest.getName());
+          if(seq<=2000){
+            numOfNotCacheOfPopularData++;
+          }
+          else{
+            numOfNotCacheOfUnpopularData++;
+          }
+        });
+  }
 
   std::set<std::pair<Face*, EndpointId>> satisfiedDownstreams;
   std::multimap<std::pair<Face*, EndpointId>, std::shared_ptr<pit::Entry>> unsatisfiedPitEntries;
@@ -844,6 +902,68 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
   if (!isDryRun) {
     m_config = config;
   }
+}
+
+void computeForwarderMetricsWDCallback(Forwarder *ptr)
+{
+  if(ptr->isConsumerNode){
+    //消费者节点
+    return;
+  }
+  if(ptr->numOfUnpopularData + ptr->numOfPopularData == 0){
+    //未启动节点（还没有发起攻击的攻击者）
+    return;
+  }
+
+  double normalHitRatio = 0;
+  NFD_LOG_DEBUG("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+  NFD_LOG_DEBUG("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+  if(ptr->numOfReceivedNormalUserInterest!=0){
+    normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
+    NFD_LOG_DEBUG("normalHitRatio= "<<normalHitRatio);
+  }
+
+  double detectionRatio = 0;
+  NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+  NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+  if(ptr->numOfUnpopularData!=0){
+    normalHitRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+    NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
+  }
+
+  double falseAlarmRatio = 0;
+  NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
+  NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+  if(ptr->numOfPopularData!=0){
+    normalHitRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+    NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
+  }
+
+  std::ofstream outFile("/home/dkp/ndnSIM(cpa-ours)/ns-3/ForwarderMetrics.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  if (outFile.is_open()) {
+    outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  }
+  outFile.close();
+
+  ptr->numOfHitNormalUserInterest = 0;
+  ptr->numOfReceivedNormalUserInterest = 0;
+  ptr->numOfNotCacheOfUnpopularData = 0;
+  ptr->numOfUnpopularData = 0;
+  ptr->numOfNotCacheOfPopularData = 0;
+  ptr->numOfPopularData = 0;
+
+  ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+}
+
+void 
+Forwarder::SetMetricsWatchDog(ns3::Time t)
+{
+    if (t > ns3::MilliSeconds(0))
+    {
+        computeForwarderMetricsWD.Ping(t);
+        computeForwarderMetricsWD.SetFunction(computeForwarderMetricsWDCallback);
+        computeForwarderMetricsWD.SetArguments<Forwarder *>(this);
+    }
 }
 
 } // namespace nfd
