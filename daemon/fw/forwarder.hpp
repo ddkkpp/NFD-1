@@ -174,18 +174,30 @@ public:
   signal::Signal<Forwarder, Interest> afterCsMiss;
 
   // 声明SetWatchDog函数
-  void SetWatchDog(ns3::Time interval);
+  void SetDetectWatchDog(ns3::Time interval);
+  void SetMetricsWatchDog(ns3::Time interval);
 
   ns3::Watchdog detectWD; 
-  ns3::Time watchdogPeriod = ns3::MilliSeconds(1000);
+  ns3::Time detectWatchdogPeriod = ns3::MilliSeconds(1000);
+  ns3::Watchdog computeForwarderMetricsWD;
+  ns3::Time metricsWatchdogPeriod = ns3::MilliSeconds(500);
 
   std::unordered_map<uint64_t, int> numOfInterest;//每个内容名的请求数量
   int maliciousLimit = 15;//恶意节点的请求数量距离均值的倍数限制
   std::unordered_set<uint64_t> malicious;//恶意
 
 
-  int mynodeid=0;//节点id
-  std::unordered_set<int> edgeId={2};//消费者边缘节点
+  int mynodeid=10000;//节点id,取10000避免与其他节点id重复
+  bool isEdgeNode = false;
+  bool isConsumerNode = false;
+
+  int numOfReceivedNormalUserInterest = 0;//收到正常用户请求的数量
+  int numOfHitNormalUserInterest = 0;//正常用户请求命中的数量
+
+  int numOfUnpopularData = 0;//遇到不流行内容的数量
+  int numOfPopularData = 0;//遇到流行内容的数量
+  int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
+  int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
 
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines

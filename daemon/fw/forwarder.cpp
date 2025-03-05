@@ -78,7 +78,7 @@ void detectWDCallback(Forwarder *ptr)
     //重置numOfInterest
     ptr->numOfInterest.clear();
     
-    ptr->detectWD.Ping(ptr->watchdogPeriod);
+    ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
 
 
@@ -128,13 +128,14 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetWatchDog(ns3::MilliSeconds(1000));
+  SetDetectWatchDog(ns3::MilliSeconds(1000));
+  SetMetricsWatchDog(ns3::MilliSeconds(500));
 }
 
 Forwarder::~Forwarder() = default;
 
 void
-Forwarder::SetWatchDog(ns3::Time t)
+Forwarder::SetDetectWatchDog(ns3::Time t)
 {
     if (t > ns3::MilliSeconds(0))
     {
@@ -149,9 +150,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 {
   // receive Interest
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
-
-
   NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
+  if(ingress.face.getRemoteUri().getScheme() == "appFace"){
+    NFD_LOG_DEBUG("is consumer node");
+    isConsumerNode = true;//消费者节点的nodeid
+  }
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
@@ -164,6 +167,27 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           NFD_LOG_DEBUG("seq= "<<seq<<" is malicious, drop the interest");
           return;
       }
+
+      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+      auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
+      // 提取高16位
+      uint32_t highBits =  tagRead >> 48 & 0xFFFFFFFF;
+      //提取中16位
+      uint32_t middleBits = tagRead >> 32 & 0x0000FFFF;
+      // 提取低32位
+      uint32_t lowBits = tagRead & 0xFFFFFFFF;
+      NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+      if(highBits ==0){
+        NFD_LOG_DEBUG("normal user interest received");
+        numOfReceivedNormalUserInterest++;
+      }
+      if(middleBits == 1){
+        NFD_LOG_DEBUG("is edge node");
+        isEdgeNode = true;
+      }
+      //中间16位设置为0，使得接下来的节点不会再判断为edge节点
+      uint64_t tagWrite = tagRead & 0xFF00FFFF;
+      interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
 
       //统计seq的数目到numOfInterest
       if(numOfInterest.find(seq) == numOfInterest.end())
@@ -327,11 +351,23 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
                              const shared_ptr<pit::Entry>& pitEntry, const Data& data)
 {
   NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
+
+  auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+  uint32_t highBits = ((*consumerId) >> 32) & 0xFFFFFFFF; // 提取高32位
+  uint32_t lowBits = (*consumerId) & 0xFFFFFFFF;          // 提取低32位
+  NFD_LOG_DEBUG("Tag value: high32=" << highBits << ", low32=" << lowBits);
+  if(highBits ==0){
+     NFD_LOG_DEBUG("normal user interest hit");
+     numOfHitNormalUserInterest++;
+  }
+
   ++m_counters.nCsHits;
   afterCsHit(interest, data);
 
   data.setTag(make_shared<lp::IncomingFaceIdTag>(face::FACEID_CONTENT_STORE));
   data.setTag(interest.getTag<lp::PitToken>());
+  //若缓存命中，则hopcount置为0
+  data.setTag(make_shared<lp::HopCountTag>(0));
   // FIXME Should we lookup PIT for other Interests that also match the data?
 
   pitEntry->isSatisfied = true;
@@ -733,6 +769,68 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
   if (!isDryRun) {
     m_config = config;
   }
+}
+
+void computeForwarderMetricsWDCallback(Forwarder *ptr)
+{
+  if(ptr->isConsumerNode){
+    //消费者节点
+    return;
+  }
+  if(ptr->numOfUnpopularData + ptr->numOfPopularData == 0){
+    //未启动节点（还没有发起攻击的攻击者）
+    return;
+  }
+
+  double normalHitRatio = 0;
+  NFD_LOG_DEBUG("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+  NFD_LOG_DEBUG("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+  if(ptr->numOfReceivedNormalUserInterest!=0){
+    normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
+    NFD_LOG_DEBUG("normalHitRatio= "<<normalHitRatio);
+  }
+
+  double detectionRatio = 0;
+  NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+  NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+  if(ptr->numOfUnpopularData!=0){
+    normalHitRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+    NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
+  }
+
+  double falseAlarmRatio = 0;
+  NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
+  NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+  if(ptr->numOfPopularData!=0){
+    normalHitRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+    NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
+  }
+
+  std::ofstream outFile("/home/dkp/ndnSIM(cpa-ours)/ns-3/ForwarderMetrics.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  if (outFile.is_open()) {
+    outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  }
+  outFile.close();
+
+  ptr->numOfHitNormalUserInterest = 0;
+  ptr->numOfReceivedNormalUserInterest = 0;
+  ptr->numOfNotCacheOfUnpopularData = 0;
+  ptr->numOfUnpopularData = 0;
+  ptr->numOfNotCacheOfPopularData = 0;
+  ptr->numOfPopularData = 0;
+
+  ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+}
+
+void 
+Forwarder::SetMetricsWatchDog(ns3::Time t)
+{
+    if (t > ns3::MilliSeconds(0))
+    {
+        computeForwarderMetricsWD.Ping(t);
+        computeForwarderMetricsWD.SetFunction(computeForwarderMetricsWDCallback);
+        computeForwarderMetricsWD.SetArguments<Forwarder *>(this);
+    }
 }
 
 } // namespace nfd
