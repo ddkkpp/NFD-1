@@ -174,11 +174,8 @@ public:
   signal::Signal<Forwarder, Interest> afterCsMiss;
 
   // 声明SetWatchDog函数
-  void SetDetectWatchDog(ns3::Time interval);
   void SetMetricsWatchDog(ns3::Time interval);
 
-  ns3::Watchdog detectWD; 
-  ns3::Time detectWatchdogPeriod = ns3::MilliSeconds(1000);
   ns3::Watchdog computeForwarderMetricsWD;
   ns3::Time metricsWatchdogPeriod = ns3::MilliSeconds(500);
 

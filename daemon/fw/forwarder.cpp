@@ -50,36 +50,7 @@ NFD_LOG_INIT(Forwarder);
 
 const std::string CFG_FORWARDER = "forwarder";
 
-void detectWDCallback(Forwarder *ptr)
-{
-    NFD_LOG_DEBUG("detectWDCallback");
-    //统计numOfInterest的均值和标准差（用简单方法计算标准差），当数值大于均值加减15倍的标准差时，认为该节点是恶意节点
-    double sum = 0;
-    double sum2 = 0;
-    double mean = 0;
-    double std = 0;
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
-    {
-        sum += it->second;
-        sum2 += it->second * it->second;
-    }
-    mean = sum / ptr->numOfInterest.size();
-    std = sqrt(sum2 / ptr->numOfInterest.size() - mean * mean);
-    NFD_LOG_DEBUG("mean= "<<mean<<" std= "<<std);
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
-    {
-        if(it->second > mean + ptr->maliciousLimit * std || it->second < mean - ptr->maliciousLimit * std)
-        {
-            NFD_LOG_DEBUG("seq= "<<it->first<<" is malicious");
-            NFD_LOG_DEBUG("count= "<<it->second);
-            ptr->malicious.insert(it->first);
-        }
-    }
-    //重置numOfInterest
-    ptr->numOfInterest.clear();
-    
-    ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
-}
+
 
 
 static Name
@@ -128,22 +99,10 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   m_strategyChoice.setDefaultStrategy(getDefaultStrategyName());
 
-  SetDetectWatchDog(ns3::MilliSeconds(1000));
   SetMetricsWatchDog(ns3::MilliSeconds(500));
 }
 
 Forwarder::~Forwarder() = default;
-
-void
-Forwarder::SetDetectWatchDog(ns3::Time t)
-{
-    if (t > ns3::MilliSeconds(0))
-    {
-        detectWD.Ping(t);
-        detectWD.SetFunction(detectWDCallback);
-        detectWD.SetArguments<Forwarder *>(this);
-    }
-}
 
 void
 Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingress)
@@ -162,11 +121,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
                 //而且不会对该函数报错，而是仍然运行成功，但是log显示兴趣包转发不出去
       auto seq = interest.getName().get(1).toSequenceNumber();
-      if(malicious.find(seq) !=malicious.end())
-      {
-          NFD_LOG_DEBUG("seq= "<<seq<<" is malicious, drop the interest");
-          return;
-      }
 
       auto consumerId = interest.getTag<lp::ConsumerIdTag>();
       auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
