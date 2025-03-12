@@ -66,26 +66,26 @@ void detectWDCallback(Forwarder *ptr)
     }
     for(auto it = ptr->n_u.begin(); it != ptr->n_u.end(); it++)
     {
-       //NFD_LOG_DEBUG("seq= "<<it->first);
+       NFD_LOG_DEBUG("seq= "<<it->first);
        double temp = double(it->second.size()) / double((ptr->n).size());
-       //NFD_LOG_DEBUG("ratio of user number= "<<temp);
+       NFD_LOG_DEBUG("ratio of user number= "<<temp);
        if(ptr->wdCount==1){
             ptr->rho[it->first] = temp;
         }
         else{
             ptr->rho[it->first] = (1-ptr->lambda) * ptr->rho[it->first] + ptr->lambda * temp;
         }
-        //NFD_LOG_DEBUG("rho= "<<ptr->rho[it->first]);
+        NFD_LOG_DEBUG("rho= "<<ptr->rho[it->first]);
         sum_rho += ptr->rho[it->first];
         sum2_rho += ptr->rho[it->first] * ptr->rho[it->first];
 
         r[it->first] = double(ptr->numOfInterest[it->first]) / double(ptr->m);
-        //NFD_LOG_DEBUG("r= "<<r[it->first]);
+        NFD_LOG_DEBUG("r= "<<r[it->first]);
         sum_r += r[it->first];
         sum2_r += r[it->first] * r[it->first];
 
         av[it->first] = r[it->first] / ptr->rho[it->first];
-        //NFD_LOG_DEBUG("av= "<<av[it->first]);
+        NFD_LOG_DEBUG("av= "<<av[it->first]);
         sum_av += av[it->first];
         sum2_av += av[it->first] * av[it->first];
     }
@@ -122,8 +122,8 @@ void detectWDCallback(Forwarder *ptr)
         if(av[it->first] > ptr->thr_av)
         {
             //不使用av来判断
-            //ptr->malicious.insert(it->first);
-            //NFD_LOG_DEBUG("detect seq= "<<it->first<<" is malicious, av= "<<av[it->first]);
+            ptr->malicious.insert(it->first);
+            NFD_LOG_DEBUG("detect seq= "<<it->first<<" is malicious, av= "<<av[it->first]);
         }
         if((r[it->first] > ptr->thr_r) && (ptr->rho[it->first] < ptr->thr_rho))
         {
@@ -231,12 +231,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           return;
       }
 
-      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
       auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
       // 提取高16位
-      uint32_t highBits =  tagRead >> 48 & 0xFFFFFFFF;
-      //提取中16位
-      uint32_t middleBits = tagRead >> 32 & 0x0000FFFF;
+      uint16_t highBits = (tagRead >> 48) & 0xFFFF;
+      // 提取中16位
+      uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
       // 提取低32位
       uint32_t lowBits = tagRead & 0xFFFFFFFF;
       NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
@@ -249,7 +248,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         isEdgeNode = true;
       }
       //中间16位设置为0，使得接下来的节点不会再判断为edge节点
-      uint64_t tagWrite = tagRead & 0xFF00FFFF;
+      uint64_t tagWrite = tagRead & 0xFFFF0000FFFFFFFF;
       interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
 
       //统计seq的数目到numOfInterest
@@ -442,10 +441,14 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
 {
   NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
 
-  auto consumerId = interest.getTag<lp::ConsumerIdTag>();
-  uint32_t highBits = ((*consumerId) >> 32) & 0xFFFFFFFF; // 提取高32位
-  uint32_t lowBits = (*consumerId) & 0xFFFFFFFF;          // 提取低32位
-  NFD_LOG_DEBUG("Tag value: high32=" << highBits << ", low32=" << lowBits);
+  auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
+  // 提取高16位
+  uint16_t highBits = (tagRead >> 48) & 0xFFFF;
+  // 提取中16位
+  uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
+  // 提取低32位
+  uint32_t lowBits = tagRead & 0xFFFFFFFF;
+  NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
   if(highBits ==0){
      NFD_LOG_DEBUG("normal user interest hit");
      numOfHitNormalUserInterest++;
@@ -573,7 +576,6 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         numOfUnpopularData++;
       }
       shared_ptr<Name> nameWithSequence = make_shared<Name>(data.getName());
-      nameWithSequence->appendSequenceNumber(seq);
       shared_ptr<Interest> interest = make_shared<Interest>();
       interest->setNonce(0);
       interest->setName(*nameWithSequence);
@@ -927,7 +929,7 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
   NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
   if(ptr->numOfUnpopularData!=0){
-    normalHitRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+    detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
     NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
   }
 
@@ -935,11 +937,12 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
   NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){
-    normalHitRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+    falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
     NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
   }
 
-  std::ofstream outFile("/home/dkp/ndnSIM(cpa-ours)/ns-3/ForwarderMetrics.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  //注意：这里的路径需要根据实际情况修改
+  std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-non-coop.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
   if (outFile.is_open()) {
     outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
   }
