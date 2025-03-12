@@ -163,6 +163,14 @@ GenericLinkService::encodeLpFields(const ndn::PacketBase& netPkt, lp::Packet& lp
     lpPacket.add<lp::ConsumerIdField>(0);
   }
 
+  auto isNextPeriodOfAttackTag = netPkt.getTag<lp::IsNextPeriodOfAttackTag>();
+  if (isNextPeriodOfAttackTag != nullptr) {
+    lpPacket.add<lp::IsNextPeriodOfAttackField>(*isNextPeriodOfAttackTag);
+  }
+  else {
+    lpPacket.add<lp::IsNextPeriodOfAttackField>(0);
+  }
+
   if (m_options.allowLocalFields) {
     auto incomingFaceIdTag = netPkt.getTag<lp::IncomingFaceIdTag>();
     if (incomingFaceIdTag != nullptr) {
@@ -392,6 +400,11 @@ GenericLinkService::decodeInterest(const Block& netPkt, const lp::Packet& firstP
   if (firstPkt.has<lp::ConsumerIdField>()) {
     interest->setTag(make_shared<lp::ConsumerIdTag>(firstPkt.get<lp::ConsumerIdField>()));
   }
+
+  if (firstPkt.has<lp::IsNextPeriodOfAttackField>()) {
+    interest->setTag(make_shared<lp::IsNextPeriodOfAttackTag>(firstPkt.get<lp::IsNextPeriodOfAttackField>()));
+  }
+  
   
   // Increment HopCount
   if (firstPkt.has<lp::HopCountTagField>()) {

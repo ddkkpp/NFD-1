@@ -245,6 +245,8 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   // 声明SetWatchDog函数
   void SetDetectWatchDog(ns3::Time interval);
   void SetMetricsWatchDog(ns3::Time interval);
+  // 新增统计watchdog的函数
+  void SetInterestCountWatchDog(ns3::Time interval);
 
   ns3::Watchdog detectWD; 
   ns3::Time detectWatchdogPeriod = ns3::MilliSeconds(1000);
@@ -278,6 +280,9 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::set<FaceId> finalSuspect;//合并finalSuspect1和finalSuspect2
   double popularRateLimit = 0.1;//流行度阈值(在默认设置下，正常用户的该值为0.4～0.5)
   std::set<FaceId> Malicious;//恶意
+  bool isNextPeriodOfAttack = false;//是否是攻击后的下一个周期
+  bool isEndOfPeriodOfDetectAttack = false;//是否是检测到攻击的周期的结束时刻
+  bool hasNotifyIsNextPeriodOfAttack = false;//
 
 
   int mynodeid=10000;//节点id,取10000避免与其他节点id重复
@@ -298,6 +303,19 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
   int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
 
+  // 新增的Watchdog和相关数据结构
+  ns3::Watchdog interestCountWD;
+  ns3::Time interestCountWatchdogPeriod = ns3::MilliSeconds(50);
+  int interestCountPerPeriodSize = 20; // 每个端口每小周期的兴趣包数量的存储大小
+  
+  // 存储每个端口每小周期的兴趣包数量
+  std::map<FaceId, std::vector<int>> interestCountPerPeriod;
+  // 存储每个端口当前小周期内的兴趣包计数
+  std::map<FaceId, int> currentPeriodInterestCount;
+  // 存储每个端口的历史最大值增加次数
+  std::map<FaceId, int> increasesAboveMaxCount;
+  std::map<FaceId, int> historyMax;
+  std::map<FaceId, int> numOfSmallPreiod;//经历的小周期数
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline

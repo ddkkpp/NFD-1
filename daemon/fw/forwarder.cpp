@@ -39,7 +39,7 @@
 #include <nanoflann.hpp>
 #include <boost/math/distributions/fisher_f.hpp>
 #include <boost/math/distributions/students_t.hpp>
-
+#include <cmath>
 #include <json/json.h>
 
 #include "face/null-face.hpp"
@@ -50,11 +50,85 @@ NFD_LOG_INIT(Forwarder);
 
 const std::string CFG_FORWARDER = "forwarder";
 
+// 新增的小周期Watchdog回调函数
+void countInterestWDCallback(Forwarder *ptr)
+{
+    NFD_LOG_DEBUG("countInterestWDCallback");
+    if(ptr->isEdgeNode)
+    {
+        // 记录当前周期的计数到向量中
+        for (auto& entry : ptr->currentPeriodInterestCount) {
+            FaceId faceId = entry.first;
+            int count = entry.second;
+            
+            // 确保有存储空间
+            if (ptr->interestCountPerPeriod.find(faceId) == ptr->interestCountPerPeriod.end()) {
+                ptr->interestCountPerPeriod[faceId] = std::vector<int>();
+            }
+            
+            // 添加当前周期的计数
+            ptr->interestCountPerPeriod[faceId].push_back(count);
+            
+            // 保持记录个数（对应1s的watchdog周期）
+            if (ptr->interestCountPerPeriod[faceId].size() > ptr->interestCountPerPeriodSize) {
+                ptr->interestCountPerPeriod[faceId].erase(ptr->interestCountPerPeriod[faceId].begin());
+            }
+            
+            NFD_LOG_DEBUG("Face " << faceId << " current period interest count: " << count);
+        }
+        
+        // 重置当前周期的计数
+        ptr->currentPeriodInterestCount.clear();
+    }
+    
+    // 继续监测
+    ptr->interestCountWD.Ping(ptr->interestCountWatchdogPeriod);
+}
+
+void
+Forwarder::SetInterestCountWatchDog(ns3::Time t)
+{
+    if (t > ns3::MilliSeconds(0))
+    {
+        interestCountWD.Ping(t);
+        interestCountWD.SetFunction(countInterestWDCallback);
+        interestCountWD.SetArguments<Forwarder *>(this);
+    }
+}
 void detectWDCallback(Forwarder *ptr)
 {
     NFD_LOG_DEBUG("detectWDCallback");
     if(ptr->isEdgeNode)
     {
+        // 计算每个端口在过去1s内兴趣包数量相比历史最大值增加的次数
+        ptr->increasesAboveMaxCount.clear();
+        for (const auto& entry : ptr->interestCountPerPeriod) {
+            FaceId faceId = entry.first;
+            NFD_LOG_DEBUG("Face ID: " << faceId);
+            const auto& counts = entry.second;
+            
+            if (counts.empty()) {
+                continue;
+            }
+            
+            int increasesCount = 0;
+
+            for (size_t i = 0; i < counts.size(); i++) {
+                NFD_LOG_DEBUG("counts[" << i << "]: " << counts[i]);
+                if (counts[i] > ptr->historyMax[faceId]) {
+                    increasesCount++;
+                    ptr->historyMax[faceId] = counts[i];
+                }
+            }
+            
+            ptr->increasesAboveMaxCount[faceId] = increasesCount; 
+            ptr->numOfSmallPreiod[faceId]+=counts.size();
+            NFD_LOG_DEBUG("Face " << faceId << " increases above max: " << increasesCount<<" numOfSmallPreiod: "<<ptr->numOfSmallPreiod[faceId]);
+        }
+        
+        // 清空当前统计周期的数据，准备下一个1s的统计
+        ptr->interestCountPerPeriod.clear();
+
         if(ptr->nowIntervalSeriesOfFace.empty())
         {
             NFD_LOG_DEBUG("nowIntervalSeriesOfFace is empty");
@@ -323,22 +397,22 @@ void detectWDCallback(Forwarder *ptr)
                 ptr->finalSuspect1.clear();//先清空
                 ptr->performTests(lshClusters, ptr->lastIntervalSeriesOfFace, alpha, ptr->finalSuspect1);
             }
-            NFD_LOG_DEBUG("final suspect 1: ");
             std::ostringstream oss;
             for (FaceId faceId : ptr->finalSuspect1) {
                 oss << faceId << " ";
             }
+            NFD_LOG_DEBUG("final suspect 1: " << oss.str());
 
             //第二大部分，根据速率与有效范围的比值做孤立森林检测
             NFD_LOG_DEBUG("Isolation Forest start: ");
             ptr->finalSuspect2.clear();//先清空
             ptr->performIsolationForestDetection(ptr->finalSuspect2);
-            NFD_LOG_DEBUG("final suspect 2: ");
             oss.str("");
             oss.clear();
             for (FaceId faceId : ptr->finalSuspect2) {
                 oss << faceId << " ";
             }
+            NFD_LOG_DEBUG("final suspect 2: " << oss.str());
 
             //合并两部分的结果
             ptr->finalSuspect.clear();//先清空
@@ -349,15 +423,13 @@ void detectWDCallback(Forwarder *ptr)
             分别计算finalSuspect1和finalSuspect2对应的faceId的lastContentSeriesOfFace中，包含在lastLastSequenceMap中的元素的比例。
             若比例小于popularRate，认为是恶意用户
             */
-            ptr->lastLastSequenceMap = ptr->lastSequenceMap;
-            ptr->lastSequenceMap = ptr->curSequenceMap;
-            ptr->curSequenceMap.clear();
-            //打印lastLastSequenceMap
+
+            // //打印lastLastSequenceMap
             // NFD_LOG_DEBUG("lastLastSequenceMap: ");
             // for (const auto& entry : ptr->lastLastSequenceMap) {
             //     NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
             // }
-            //打印lastSequenceMap
+            // //打印lastSequenceMap
             // NFD_LOG_DEBUG("lastSequenceMap: ");
             // for (const auto& entry : ptr->lastSequenceMap) {
             //     NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
@@ -365,7 +437,25 @@ void detectWDCallback(Forwarder *ptr)
 
             for (FaceId faceId : ptr->finalSuspect) {
                 int count = 0;
-                for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
+                NFD_LOG_DEBUG("Face ID: " << faceId);
+                //如果不是攻击后的下一个周期，则在lastSequenceMap中查找
+                if(!ptr->isNextPeriodOfAttack){
+                  NFD_LOG_DEBUG("is not next period of attack, use lastSequenceMap to detect");
+                  for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
+                    if (ptr->lastSequenceMap.find(content) != ptr->lastSequenceMap.end()) {
+                        ++count;
+                        //NFD_LOG_DEBUG("is popular");
+                    }
+                    else
+                    {
+                        //NFD_LOG_DEBUG("is not popular");
+                    }
+                  }
+                }
+                //如果是攻击后的下一个周期，则在lastLastSequenceMap中查找
+                else{
+                  NFD_LOG_DEBUG("is next period of attack, use lastLastSequenceMap to detect");
+                  for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
                     if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
                         ++count;
                         //NFD_LOG_DEBUG("is popular");
@@ -374,6 +464,7 @@ void detectWDCallback(Forwarder *ptr)
                     {
                         //NFD_LOG_DEBUG("is not popular");
                     }
+                  }
                 }
                 if(ptr->lastContentSeriesOfFace[faceId].size()!=0)//注意不能除以零
                 {
@@ -383,33 +474,64 @@ void detectWDCallback(Forwarder *ptr)
                   if (popularRate < ptr->popularRateLimit) {
                       ptr->Malicious.insert(faceId);
                       NFD_LOG_DEBUG("Face ID: " << faceId << " is malicious");
+                      //设置isEndOfPeriodOfDetectAttack为true
+                      ptr->isEndOfPeriodOfDetectAttack = true;
                   }
                 }
             }
             //测试其他face的popular rate
-            for(auto entry : ptr->lastContentSeriesOfFace)
-            {
-                NFD_LOG_DEBUG("Face ID: " << entry.first);
-                int count = 0;
-                for (uint64_t content : entry.second) {
-                    NFD_LOG_DEBUG("content: " << content);
-                    if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
-                        ++count;
-                        //NFD_LOG_DEBUG("is popular");
-                    }
-                    else
-                    {
-                        //NFD_LOG_DEBUG("is not popular");
-                    }
-                }
-                if(entry.second.size()!=0)
-                {
-                  double popularRate = static_cast<double>(count) / static_cast<double>(entry.second.size());
-                  NFD_LOG_DEBUG("Face ID: " << entry.first << " popular rate: " << popularRate);
-                }
-            }
-
+            // for(auto entry : ptr->lastContentSeriesOfFace)
+            // {
+            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     int count = 0;
+            //     for (uint64_t content : entry.second) {
+            //       //如果不是攻击后的下一个周期，则在lastSequenceMap中查找
+            //       if(!ptr->isNextPeriodOfAttack){
+            //         NFD_LOG_DEBUG("content: " << content);
+            //         if (ptr->lastSequenceMap.find(content) != ptr->lastSequenceMap.end()) {
+            //             ++count;
+            //             //NFD_LOG_DEBUG("is popular");
+            //         }
+            //         else
+            //         {
+            //             //NFD_LOG_DEBUG("is not popular");
+            //         }
+            //       }
+            //       //如果是攻击后的下一个周期，则在lastLastSequenceMap中查找
+            //       else
+            //       {
+            //         if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
+            //             ++count;
+            //             //NFD_LOG_DEBUG("is popular");
+            //         }
+            //         else
+            //         {
+            //             //NFD_LOG_DEBUG("is not popular");
+            //         }
+            //       }
+            //     }
+            //     if(entry.second.size()!=0)
+            //     {
+            //       double popularRate = static_cast<double>(count) / static_cast<double>(entry.second.size());
+            //       NFD_LOG_DEBUG("Face ID: " << entry.first << " popular rate: " << popularRate);
+            //     }
+            // }
+            //必须要在使用lastSequenceMap或lastLastSequenceMap后更新
+            ptr->lastLastSequenceMap = ptr->lastSequenceMap;
+            ptr->lastSequenceMap = ptr->curSequenceMap;
+            ptr->curSequenceMap.clear();
         }
+    }
+    //重置isNextPeriodOfAttack为false
+    if(ptr->isEndOfPeriodOfDetectAttack){
+        ptr->isNextPeriodOfAttack = true;
+        ptr->isEndOfPeriodOfDetectAttack = false;
+        NFD_LOG_DEBUG("isNextPeriodOfAttack is true");
+        NFD_LOG_DEBUG("isEndOfPeriodOfDetectAttack is false");
+    }
+    else{
+        ptr->isNextPeriodOfAttack = false;
+        NFD_LOG_DEBUG("isNextPeriodOfAttack is false");
     }
     ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
@@ -791,8 +913,21 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
         FaceId faceId = entry.first;
         double validRange = validRangeOfFace[faceId];
         double length = entry.second.size();
-        double feature = length / validRange;
-        NFD_LOG_DEBUG("Face " << faceId << " validRange: " << validRange << " length: " << length << " feature: " << feature);
+        
+        // 获取放大因子n
+        // int n = 0; // 默认为1
+        // if (increasesAboveMaxCount.find(faceId) != increasesAboveMaxCount.end()) {
+        //     n = increasesAboveMaxCount[faceId];
+        // }
+
+        double n = 0;
+        if (increasesAboveMaxCount.find(faceId) != increasesAboveMaxCount.end()) {
+            n = double(increasesAboveMaxCount[faceId]+1) / double(numOfSmallPreiod[faceId]);
+        }
+        // 使用n作为放大因子
+        double feature = std::exp(length / validRange + n*10);
+        NFD_LOG_DEBUG("Face " << faceId << " validRange: " << validRange 
+                    << " length: " << length << " n: " << n << " feature: " << feature);
         inputData[std::to_string(faceId)] = feature;
     }
 
@@ -878,6 +1013,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   SetDetectWatchDog(ns3::MilliSeconds(1000));
   SetMetricsWatchDog(ns3::MilliSeconds(500));
+  SetInterestCountWatchDog(ns3::MilliSeconds(20)); // 新增速率增长次数的统计
 }
 
 Forwarder::~Forwarder() = default;
@@ -906,6 +1042,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   }
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
+    
       //只在边缘节点丢弃包，也因为faceid是局部唯一值，恶意faceid在别的节点看来是另一个邻居
       if(isEdgeNode)
       {
@@ -914,14 +1051,28 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
               NFD_LOG_DEBUG("in edge node: "<<mynodeid<<" faceId= "<<ingress.face.getId()<<" is malicious, drop the interest");
               return;
           }
+
+      }
+      
+      if(*(interest.getTag<ndn::lp::IsNextPeriodOfAttackTag>()) ==1)
+      {
+        isNextPeriodOfAttack = true;
+        NFD_LOG_DEBUG("receive nofitication that it is next period of attack");
+        //本应该收到通知之后，无论是否命中缓存，都要转发出去；但是我嫌麻烦，而且考虑到兴趣包很多，应该短时间内会有直达producer的兴趣包，所以这里不转发
       }
 
-      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
+      if(isNextPeriodOfAttack && !hasNotifyIsNextPeriodOfAttack)
+      {
+        NFD_LOG_DEBUG("notify other nodes that it is next period of attack");
+        interest.setTag(make_shared<ndn::lp::IsNextPeriodOfAttackTag>(1));
+        hasNotifyIsNextPeriodOfAttack = true;
+      }
+
       auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
       // 提取高16位
-      uint32_t highBits =  tagRead >> 48 & 0xFFFFFFFF;
-      //提取中16位
-      uint32_t middleBits = tagRead >> 32 & 0x0000FFFF;
+      uint16_t highBits = (tagRead >> 48) & 0xFFFF;
+      // 提取中16位
+      uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
       // 提取低32位
       uint32_t lowBits = tagRead & 0xFFFFFFFF;
       NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
@@ -934,8 +1085,15 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         isEdgeNode = true;
       }
       //中间16位设置为0，使得接下来的节点不会再判断为edge节点
-      uint64_t tagWrite = tagRead & 0xFF00FFFF;
+      uint64_t tagWrite = tagRead & 0xFFFF0000FFFFFFFF;
       interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
+
+      if(isEdgeNode)
+      {
+        // 更新当前周期的兴趣包计数
+        FaceId faceId = ingress.face.getId();
+        currentPeriodInterestCount[faceId]++;
+      }
 
       //获取seq一定要在判断scheme为非internal之后，否则会出现错误，
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
@@ -1201,10 +1359,14 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
 {
   NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
 
-  auto consumerId = interest.getTag<lp::ConsumerIdTag>();
-  uint32_t highBits = ((*consumerId) >> 32) & 0xFFFFFFFF; // 提取高32位
-  uint32_t lowBits = (*consumerId) & 0xFFFFFFFF;          // 提取低32位
-  NFD_LOG_DEBUG("Tag value: high32=" << highBits << ", low32=" << lowBits);
+  auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
+  // 提取高16位
+  uint16_t highBits = (tagRead >> 48) & 0xFFFF;
+  // 提取中16位
+  uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
+  // 提取低32位
+  uint32_t lowBits = tagRead & 0xFFFFFFFF;
+  NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
   if(highBits ==0){
      NFD_LOG_DEBUG("normal user interest hit");
      numOfHitNormalUserInterest++;
@@ -1320,19 +1482,42 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       else{
         numOfUnpopularData++;
       }
-      if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
-        // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
-        NFD_LOG_DEBUG("CS insert data: " << data.getName());
-        m_cs.insert(data);
-      }
-      else{
-      //统计流行内容和非流行内容不缓存数目
-        if(seq<=2000){
-            numOfNotCacheOfPopularData++;
+      if(!isNextPeriodOfAttack)
+      //如果不是攻击后的下一个周期，则在lastSequenceMap中查找
+      {
+          NFD_LOG_DEBUG("is not next period of attack, use lastSequenceMap to cache");
+          if (lastSequenceMap.size() < sequenceMapCapacity || lastSequenceMap.find(seq) != lastSequenceMap.end()) {
+            // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
+            NFD_LOG_DEBUG("CS insert data: " << data.getName());
+            m_cs.insert(data);
           }
           else{
-            numOfNotCacheOfUnpopularData++;
+          //统计流行内容和非流行内容不缓存数目
+            if(seq<=2000){
+                numOfNotCacheOfPopularData++;
+              }
+              else{
+                numOfNotCacheOfUnpopularData++;
+              }
           }
+      }
+      //如果是攻击后的下一个周期，则在lastLastSequenceMap中查找
+      else{
+        NFD_LOG_DEBUG("is next period of attack, use lastLastSequenceMap to cache");
+        if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
+          // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
+          NFD_LOG_DEBUG("CS insert data: " << data.getName());
+          m_cs.insert(data);
+        }
+        else{
+        //统计流行内容和非流行内容不缓存数目
+          if(seq<=2000){
+              numOfNotCacheOfPopularData++;
+            }
+            else{
+              numOfNotCacheOfUnpopularData++;
+            }
+        }
       }
   }
   else{
@@ -1674,7 +1859,7 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
   NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
   if(ptr->numOfUnpopularData!=0){
-    normalHitRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+    detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
     NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
   }
 
@@ -1682,11 +1867,11 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
   NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){
-    normalHitRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+    falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
     NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
   }
-
-  std::ofstream outFile("/home/dkp/ndnSIM(cpa-ours)/ns-3/ForwarderMetrics.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  //注意：这里的路径需要根据实际情况修改
+  std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-ours.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
   if (outFile.is_open()) {
     outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
   }
