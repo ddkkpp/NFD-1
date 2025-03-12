@@ -68,23 +68,23 @@ void detectWDCallback(Forwarder *ptr)
     //统计numOfInterest占的比例
     std::map<uint64_t, double> ratioOfInterest;
     //输入到文件(默认模式），第一行为seq ratio,以tab键分隔
-    std::ofstream outfile("/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " seq.txt");
-    if (outfile.is_open()) {
-        outfile << "seq" << "\t" << "ratioOfInterest" << "\n";
+    // std::ofstream outfile("/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " seq.txt");
+    // if (outfile.is_open()) {
+    //     outfile << "seq" << "\t" << "ratioOfInterest" << "\n";
         for (auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++) {
             ratioOfInterest[it->first] = it->second / double(ptr->totalInterest);
-            outfile << it->first << "\t" << ratioOfInterest[it->first] << "\n";
+    //         outfile << it->first << "\t" << ratioOfInterest[it->first] << "\n";
         }
-        outfile.close();
-        std::cout << "数据已保存到文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " seq.txt" << std::endl;
-    } else {
-        std::cerr << "无法打开文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " seq.txt" << std::endl;
-    }
+    //     outfile.close();
+    //     std::cout << "数据已保存到文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " seq.txt" << std::endl;
+    // } else {
+    //     std::cerr << "无法打开文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " seq.txt" << std::endl;
+    // }
     //统计intervalSeriesOfInterest的均值
     std::map<uint64_t, int> avgIntervalOfInterest;
-    std::ofstream outfile2("/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " interval.txt");
-    if (outfile2.is_open()) {
-        outfile2 << "seq" << "\t" << "avgInterval" << "\n";
+    // std::ofstream outfile2("/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " interval.txt");
+    // if (outfile2.is_open()) {
+    //     outfile2 << "seq" << "\t" << "avgInterval" << "\n";
         int maxavgInterval = 0;
         for (auto it = ptr->intervalSeriesOfInterest.begin(); it != ptr->intervalSeriesOfInterest.end(); it++) {
             if (it->second.size() == 0) {
@@ -95,25 +95,25 @@ void detectWDCallback(Forwarder *ptr)
                 sum += *it2;
             }
             avgIntervalOfInterest[it->first] = sum / it->second.size();
-            outfile2 << it->first << "\t" << avgIntervalOfInterest[it->first] << "\n";
+            //outfile2 << it->first << "\t" << avgIntervalOfInterest[it->first] << "\n";
             maxavgInterval = std::max(maxavgInterval, avgIntervalOfInterest[it->first]);
         }
         NFD_LOG_DEBUG("maxavgInterval= " << maxavgInterval);
-        outfile2 << "maxavgInterval= " << maxavgInterval << "\n";
+        //outfile2 << "maxavgInterval= " << maxavgInterval << "\n";
 
         // 对于 intervalSeriesOfInterest 为空的 seq，将其均值取为 maxavgInterval 到 watchdogPeriod 之间的随机值
         for (auto it = ptr->intervalSeriesOfInterest.begin(); it != ptr->intervalSeriesOfInterest.end(); it++) {
             if (it->second.size() == 0) {
                 avgIntervalOfInterest[it->first] = maxavgInterval + rand() % (ptr->detectWatchdogPeriod.GetMicroSeconds() - maxavgInterval);
-                outfile2 << it->first << "\t" << avgIntervalOfInterest[it->first] << "\n";
+                //outfile2 << it->first << "\t" << avgIntervalOfInterest[it->first] << "\n";
                 // NFD_LOG_DEBUG("seq= " << it->first << " avgInterval= " << avgIntervalOfInterest[it->first]);
             }
         }
-        outfile2.close();
-        std::cout << "数据已保存到文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " interval.txt" << std::endl;
-    } else {
-        std::cerr << "无法打开文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " interval.txt" << std::endl;
-    }
+    //     outfile2.close();
+    //     std::cout << "数据已保存到文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " interval.txt" << std::endl;
+    // } else {
+    //     std::cerr << "无法打开文件: " << "/media/sf_ndnsim/node" + std::to_string(ptr->mynodeid) + "period" + std::to_string(ptr->wdCount) + " interval.txt" << std::endl;
+    // }
 
     // 聚类
     // seq，avgIntervalOfInterest，ratioOfInterest构成三元组，进行聚类
@@ -448,12 +448,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
   if(ingress.face.getRemoteUri().getScheme() == "netdev")
   {
-      auto consumerId = interest.getTag<lp::ConsumerIdTag>();
       auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
       // 提取高16位
-      uint32_t highBits =  tagRead >> 48 & 0xFFFFFFFF;
-      //提取中16位
-      uint32_t middleBits = tagRead >> 32 & 0x0000FFFF;
+      uint16_t highBits = (tagRead >> 48) & 0xFFFF;
+      // 提取中16位
+      uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
       // 提取低32位
       uint32_t lowBits = tagRead & 0xFFFFFFFF;
       NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
@@ -466,7 +465,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         isEdgeNode = true;
       }
       //中间16位设置为0，使得接下来的节点不会再判断为edge节点
-      uint64_t tagWrite = tagRead & 0xFF00FFFF;
+      uint64_t tagWrite = tagRead & 0xFFFF0000FFFFFFFF;
       interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
 
       //获取seq一定要在判断scheme为非internal之后，否则会出现错误，
@@ -657,10 +656,14 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
 {
   NFD_LOG_DEBUG("onContentStoreHit interest=" << interest.getName());
 
-  auto consumerId = interest.getTag<lp::ConsumerIdTag>();
-  uint32_t highBits = ((*consumerId) >> 32) & 0xFFFFFFFF; // 提取高32位
-  uint32_t lowBits = (*consumerId) & 0xFFFFFFFF;          // 提取低32位
-  NFD_LOG_DEBUG("Tag value: high32=" << highBits << ", low32=" << lowBits);
+  auto tagRead = *(interest.getTag<ndn::lp::ConsumerIdTag>());
+  // 提取高16位
+  uint16_t highBits = (tagRead >> 48) & 0xFFFF;
+  // 提取中16位
+  uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
+  // 提取低32位
+  uint32_t lowBits = tagRead & 0xFFFFFFFF;
+  NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
   if(highBits ==0){
      NFD_LOG_DEBUG("normal user interest hit");
      numOfHitNormalUserInterest++;
@@ -1128,7 +1131,7 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
   NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
   if(ptr->numOfUnpopularData!=0){
-    normalHitRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+    detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
     NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
   }
 
@@ -1136,11 +1139,12 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
   NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){
-    normalHitRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+    falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
     NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
   }
 
-  std::ofstream outFile("/home/dkp/ndnSIM(cpa-ours)/ns-3/ForwarderMetrics.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  //注意：这里的路径需要根据实际情况修改
+  std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-cluster.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
   if (outFile.is_open()) {
     outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
   }
