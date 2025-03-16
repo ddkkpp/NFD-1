@@ -53,7 +53,7 @@ const std::string CFG_FORWARDER = "forwarder";
 // 新增的小周期Watchdog回调函数
 void countInterestWDCallback(Forwarder *ptr)
 {
-    NFD_LOG_DEBUG("countInterestWDCallback");
+    NFD_LOG_INFO("countInterestWDCallback");
     if(ptr->isEdgeNode)
     {
         // 记录当前周期的计数到向量中
@@ -74,7 +74,7 @@ void countInterestWDCallback(Forwarder *ptr)
                 ptr->interestCountPerPeriod[faceId].erase(ptr->interestCountPerPeriod[faceId].begin());
             }
             
-            NFD_LOG_DEBUG("Face " << faceId << " current period interest count: " << count);
+            NFD_LOG_INFO("Face " << faceId << " current period interest count: " << count);
         }
         
         // 重置当前周期的计数
@@ -97,14 +97,14 @@ Forwarder::SetInterestCountWatchDog(ns3::Time t)
 }
 void detectWDCallback(Forwarder *ptr)
 {
-    NFD_LOG_DEBUG("detectWDCallback");
+    NFD_LOG_INFO("detectWDCallback");
     if(ptr->isEdgeNode)
     {
         // 计算每个端口在过去1s内兴趣包数量相比历史最大值增加的次数
         ptr->increasesAboveMaxCount.clear();
         for (const auto& entry : ptr->interestCountPerPeriod) {
             FaceId faceId = entry.first;
-            NFD_LOG_DEBUG("Face ID: " << faceId);
+            NFD_LOG_INFO("Face ID: " << faceId);
             const auto& counts = entry.second;
             
             if (counts.empty()) {
@@ -114,7 +114,7 @@ void detectWDCallback(Forwarder *ptr)
             int increasesCount = 0;
 
             for (size_t i = 0; i < counts.size(); i++) {
-                NFD_LOG_DEBUG("counts[" << i << "]: " << counts[i]);
+                NFD_LOG_INFO("counts[" << i << "]: " << counts[i]);
                 if (counts[i] > ptr->historyMax[faceId]) {
                     increasesCount++;
                     ptr->historyMax[faceId] = counts[i];
@@ -122,8 +122,8 @@ void detectWDCallback(Forwarder *ptr)
             }
             
             ptr->increasesAboveMaxCount[faceId] = increasesCount; 
-            ptr->numOfSmallPreiod[faceId]+=counts.size();
-            NFD_LOG_DEBUG("Face " << faceId << " increases above max: " << increasesCount<<" numOfSmallPreiod: "<<ptr->numOfSmallPreiod[faceId]);
+            ptr->numOfSmallPreiod[faceId] = counts.size();
+            NFD_LOG_INFO("Face " << faceId << " increases above max: " << increasesCount<<" numOfSmallPreiod: "<<ptr->numOfSmallPreiod[faceId]);
         }
         
         // 清空当前统计周期的数据，准备下一个1s的统计
@@ -131,7 +131,7 @@ void detectWDCallback(Forwarder *ptr)
 
         if(ptr->nowIntervalSeriesOfFace.empty())
         {
-            NFD_LOG_DEBUG("nowIntervalSeriesOfFace is empty");
+            NFD_LOG_INFO("nowIntervalSeriesOfFace is empty");
         }
         else
         {
@@ -140,56 +140,56 @@ void detectWDCallback(Forwarder *ptr)
             ptr->nowIntervalSeriesOfFace.clear();
             ptr->nowContentSeriesOfFace.clear();
 
-            NFD_LOG_DEBUG("before pre-processing data");
+            NFD_LOG_INFO("before pre-processing data");
             //打印lastIntervalSeriesOfFace
-            // NFD_LOG_DEBUG("lastIntervalSeriesOfFace: ");
+            // NFD_LOG_INFO("lastIntervalSeriesOfFace: ");
             // for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
             // {
-            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
             //     std::ostringstream oss;
             //     for (const auto& val : entry.second) {
             //         oss << val << " ";
             //     }
-            //     NFD_LOG_DEBUG(oss.str());
+            //     NFD_LOG_INFO(oss.str());
             // }
 
             //打印lastContentSeriesOfFace
-            // NFD_LOG_DEBUG("lastContentSeriesOfFace: ");
+            // NFD_LOG_INFO("lastContentSeriesOfFace: ");
             // for (const auto& entry : ptr->lastContentSeriesOfFace) 
             // {
-            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
             //     std::ostringstream oss;
             //     for (const uint64_t& content : entry.second) 
             //     {
             //         oss << content << " ";
             //     }
-            //     NFD_LOG_DEBUG(oss.str());
+            //     NFD_LOG_INFO(oss.str());
             // }
 
             //得到当前face所属近邻区域的首个face在当前窗口的首个采样元素到其首个元素的时间间隔，从前到后减去face的interval，直到间隔一致
-            NFD_LOG_DEBUG("erase interval from left");
+            NFD_LOG_INFO("erase interval from left");
             for (auto& entry : ptr->lastIntervalSeriesOfFace) 
             {
                 FaceId faceId = entry.first;
-                NFD_LOG_DEBUG("faceid: " << faceId);
+                NFD_LOG_INFO("faceid: " << faceId);
                 FaceId firstFaceInNearRange = ptr->theFirstFaceInNearRangeOfFace[faceId];
-                NFD_LOG_DEBUG("firstFaceInNearRange: " << firstFaceInNearRange);
-                NFD_LOG_DEBUG("firstInterestTimeInCurWndOfFace[firstFaceInNearRange]: " << ptr->firstInterestTimeInCurWndOfFace[firstFaceInNearRange]);
-                NFD_LOG_DEBUG("firstInterestTimeOfFace[firstFaceInNearRange]: " << ptr->firstInterestTimeOfFace[firstFaceInNearRange]);
+                NFD_LOG_INFO("firstFaceInNearRange: " << firstFaceInNearRange);
+                NFD_LOG_INFO("firstInterestTimeInCurWndOfFace[firstFaceInNearRange]: " << ptr->firstInterestTimeInCurWndOfFace[firstFaceInNearRange]);
+                NFD_LOG_INFO("firstInterestTimeOfFace[firstFaceInNearRange]: " << ptr->firstInterestTimeOfFace[firstFaceInNearRange]);
                 int64_t maxUnSampleInterval = (ptr->firstInterestTimeInCurWndOfFace[firstFaceInNearRange] - ptr->firstInterestTimeOfFace[firstFaceInNearRange]).GetMicroSeconds();
-                NFD_LOG_DEBUG("maxUnSampleInterval: " << maxUnSampleInterval);
-                NFD_LOG_DEBUG("firstInterestTimeInCurWndOfFace[faceId]: " << ptr->firstInterestTimeInCurWndOfFace[faceId]); 
-                NFD_LOG_DEBUG("firstInterestTimeOfFace[faceId]: " << ptr->firstInterestTimeOfFace[faceId]);
+                NFD_LOG_INFO("maxUnSampleInterval: " << maxUnSampleInterval);
+                NFD_LOG_INFO("firstInterestTimeInCurWndOfFace[faceId]: " << ptr->firstInterestTimeInCurWndOfFace[faceId]); 
+                NFD_LOG_INFO("firstInterestTimeOfFace[faceId]: " << ptr->firstInterestTimeOfFace[faceId]);
                 int64_t hasUnSampleInterval = (ptr->firstInterestTimeInCurWndOfFace[faceId] - ptr->firstInterestTimeOfFace[faceId]).GetMicroSeconds();
 
                 for(auto it=entry.second.begin();it!=entry.second.end();)
                 {
-                    NFD_LOG_DEBUG("hasUnSampleInterval: " << hasUnSampleInterval);
+                    NFD_LOG_INFO("hasUnSampleInterval: " << hasUnSampleInterval);
                     if((hasUnSampleInterval>=maxUnSampleInterval)&&(*it!=0))
                     {
                         break;
                     }
-                    //NFD_LOG_DEBUG("earse interval: " << *it);
+                    //NFD_LOG_INFO("earse interval: " << *it);
                     entry.second.erase(it);
                     ptr->lastContentSeriesOfFace[faceId].erase(ptr->lastContentSeriesOfFace[faceId].begin());
                     it = entry.second.begin();
@@ -198,17 +198,17 @@ void detectWDCallback(Forwarder *ptr)
                 }
             }
             //从后往前删除
-            NFD_LOG_DEBUG("earse interval from right");
+            NFD_LOG_INFO("earse interval from right");
             for (auto& entry : ptr->lastIntervalSeriesOfFace) 
             {
               FaceId faceId = entry.first;
-              NFD_LOG_DEBUG("faceid: " << faceId);
+              NFD_LOG_INFO("faceid: " << faceId);
               FaceId lastFaceInNearRange = ptr->theLastFaceInNearRangeOfFace[faceId];
-              NFD_LOG_DEBUG("lastFaceInNearRange: " << lastFaceInNearRange);
-              NFD_LOG_DEBUG("firstInterestTimeInCurWndOfFace[lastFaceInNearRange]: " << ptr->firstInterestTimeInCurWndOfFace[lastFaceInNearRange]);
-              NFD_LOG_DEBUG("firstInterestTimeInCurWndOfFace[faceId]: " << ptr->firstInterestTimeInCurWndOfFace[faceId]);
+              NFD_LOG_INFO("lastFaceInNearRange: " << lastFaceInNearRange);
+              NFD_LOG_INFO("firstInterestTimeInCurWndOfFace[lastFaceInNearRange]: " << ptr->firstInterestTimeInCurWndOfFace[lastFaceInNearRange]);
+              NFD_LOG_INFO("firstInterestTimeInCurWndOfFace[faceId]: " << ptr->firstInterestTimeInCurWndOfFace[faceId]);
               int64_t needDropInterval = (ptr->firstInterestTimeInCurWndOfFace[lastFaceInNearRange] - ptr->firstInterestTimeInCurWndOfFace[faceId]).GetMicroSeconds();
-              NFD_LOG_DEBUG("needDropInterval: " << needDropInterval);
+              NFD_LOG_INFO("needDropInterval: " << needDropInterval);
               for(auto it = entry.second.end();it!=(entry.second.begin()++);)
               {
                   if(needDropInterval<=0)
@@ -216,7 +216,7 @@ void detectWDCallback(Forwarder *ptr)
                       break;
                   }
                   --it;
-                  NFD_LOG_DEBUG("earse interval: " << *it);
+                  NFD_LOG_INFO("earse interval: " << *it);
                   needDropInterval-=*it;
                   ptr->lastContentSeriesOfFace[entry.first].erase(ptr->lastContentSeriesOfFace[entry.first].end()-1);
                   it=entry.second.erase(it);
@@ -279,7 +279,7 @@ void detectWDCallback(Forwarder *ptr)
 
                 //计算有效内容范围
                 ptr->validRangeOfFace[faceId] = i;
-                NFD_LOG_DEBUG("faceId: "<< faceId<<" validRangeOfFace: " << i);
+                NFD_LOG_INFO("faceId: "<< faceId<<" validRangeOfFace: " << i);
 
                 std::vector<uint64_t> newContentSeries;
                 for (uint64_t content : entry.second) {
@@ -290,30 +290,30 @@ void detectWDCallback(Forwarder *ptr)
                 entry.second = newContentSeries;
             }
 
-            NFD_LOG_DEBUG("after pre-processing data");
+            NFD_LOG_INFO("after pre-processing data");
             //重新打印lastIntervalSeriesOfFace
-            NFD_LOG_DEBUG("lastIntervalSeriesOfFace: ");
+            NFD_LOG_INFO("lastIntervalSeriesOfFace: ");
             // for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
             // {
-            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
             //     std::ostringstream oss;
             //     for (const int64_t& interval : entry.second) 
             //     {
             //         oss << interval << " ";
             //     }
-            //     NFD_LOG_DEBUG("  " << oss.str());
+            //     NFD_LOG_INFO("  " << oss.str());
             // }
             //重新打印lastContentSeriesOfFace
-            NFD_LOG_DEBUG("lastContentSeriesOfFace: ");
+            NFD_LOG_INFO("lastContentSeriesOfFace: ");
             // for (const auto& entry : ptr->lastContentSeriesOfFace) 
             // {
-            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
             //     std::ostringstream oss;
             //     for (const uint64_t& content : entry.second) 
             //     {
             //         oss << content << " ";
             //     }
-            //     NFD_LOG_DEBUG("  " << oss.str());
+            //     NFD_LOG_INFO("  " << oss.str());
             // }
 
             //准备SimpleClustering聚类的数据
@@ -331,37 +331,37 @@ void detectWDCallback(Forwarder *ptr)
             }
 
             // 开始SimpleClustering聚类
-            NFD_LOG_DEBUG("SimpleClustering start: ");
+            NFD_LOG_INFO("SimpleClustering start: ");
             size_t tau = data.size() / 5; // 10%的face数量作为密度阈值
-            NFD_LOG_DEBUG("tau: " << tau);
+            NFD_LOG_INFO("tau: " << tau);
             size_t xi = 2; // 2为网格步长
             std::map<int, std::vector<FaceId>> clusters = ptr->runSimpleClustering(data, xi, tau); 
 
             // SimpleClustering聚类结果
-            NFD_LOG_DEBUG("SimpleClustering output: ");
+            NFD_LOG_INFO("SimpleClustering output: ");
             for (const auto& cluster : clusters) 
             {
-                NFD_LOG_DEBUG("Simple Cluster: " << cluster.first);
+                NFD_LOG_INFO("Simple Cluster: " << cluster.first);
                 std::ostringstream oss;
                 for (int faceId : cluster.second) {
                     oss << faceId << " ";
                 }
-                NFD_LOG_DEBUG("  Face IDs: " << oss.str());
+                NFD_LOG_INFO("  Face IDs: " << oss.str());
             }
 
-            NFD_LOG_DEBUG("LSH start: ");
+            NFD_LOG_INFO("LSH start: ");
             for (const auto& cluster : clusters) 
             {
                 //在SimpleClustering聚类结果中开始LSH聚类
                 if (cluster.second.size() < 2) {
                   continue;
                 }
-                NFD_LOG_DEBUG("in Simple Cluster: " << cluster.first);
+                NFD_LOG_INFO("in Simple Cluster: " << cluster.first);
                 std::ostringstream oss;
                 for (int faceId : cluster.second) {
                     oss << faceId << " ";
                 }
-                NFD_LOG_DEBUG("  Face IDs: " << oss.str());
+                NFD_LOG_INFO("  Face IDs: " << oss.str());
                 oss.str("");
                 oss.clear();
 
@@ -383,16 +383,16 @@ void detectWDCallback(Forwarder *ptr)
 
                 // LSH聚类结果
                 for (const auto& cluster : lshClusters) {
-                    NFD_LOG_DEBUG("Cluster ID: " << cluster.first);
+                    NFD_LOG_INFO("Cluster ID: " << cluster.first);
                     std::ostringstream oss;
                     for (FaceId faceId : cluster.second) {
                         oss << faceId << " ";
                     }
-                    NFD_LOG_DEBUG("  Face IDs: " << oss.str());
+                    NFD_LOG_INFO("  Face IDs: " << oss.str());
                 }
 
                 //开始假设检验
-                NFD_LOG_DEBUG("hypothesis testing start: ");
+                NFD_LOG_INFO("hypothesis testing start: ");
                 double alpha = 0.05;
                 ptr->finalSuspect1.clear();//先清空
                 ptr->performTests(lshClusters, ptr->lastIntervalSeriesOfFace, alpha, ptr->finalSuspect1);
@@ -401,10 +401,10 @@ void detectWDCallback(Forwarder *ptr)
             for (FaceId faceId : ptr->finalSuspect1) {
                 oss << faceId << " ";
             }
-            NFD_LOG_DEBUG("final suspect 1: " << oss.str());
+            NFD_LOG_INFO("final suspect 1: " << oss.str());
 
             //第二大部分，根据速率与有效范围的比值做孤立森林检测
-            NFD_LOG_DEBUG("Isolation Forest start: ");
+            NFD_LOG_INFO("Isolation Forest start: ");
             ptr->finalSuspect2.clear();//先清空
             ptr->performIsolationForestDetection(ptr->finalSuspect2);
             oss.str("");
@@ -412,7 +412,7 @@ void detectWDCallback(Forwarder *ptr)
             for (FaceId faceId : ptr->finalSuspect2) {
                 oss << faceId << " ";
             }
-            NFD_LOG_DEBUG("final suspect 2: " << oss.str());
+            NFD_LOG_INFO("final suspect 2: " << oss.str());
 
             //合并两部分的结果
             ptr->finalSuspect.clear();//先清空
@@ -425,44 +425,44 @@ void detectWDCallback(Forwarder *ptr)
             */
 
             // //打印lastLastSequenceMap
-            // NFD_LOG_DEBUG("lastLastSequenceMap: ");
+            // NFD_LOG_INFO("lastLastSequenceMap: ");
             // for (const auto& entry : ptr->lastLastSequenceMap) {
-            //     NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
+            //     NFD_LOG_INFO("Content: " << entry.first << " Sequence: " << entry.second);
             // }
             // //打印lastSequenceMap
-            // NFD_LOG_DEBUG("lastSequenceMap: ");
+            // NFD_LOG_INFO("lastSequenceMap: ");
             // for (const auto& entry : ptr->lastSequenceMap) {
-            //     NFD_LOG_DEBUG("Content: " << entry.first << " Sequence: " << entry.second);
+            //     NFD_LOG_INFO("Content: " << entry.first << " Sequence: " << entry.second);
             // }
 
             for (FaceId faceId : ptr->finalSuspect) {
                 int count = 0;
-                NFD_LOG_DEBUG("Face ID: " << faceId);
+                NFD_LOG_INFO("Face ID: " << faceId);
                 //如果不是攻击后的下一个周期，则在lastSequenceMap中查找
                 if(!ptr->isNextPeriodOfAttack){
-                  NFD_LOG_DEBUG("is not next period of attack, use lastSequenceMap to detect");
+                  NFD_LOG_INFO("is not next period of attack, use lastSequenceMap to detect");
                   for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
                     if (ptr->lastSequenceMap.find(content) != ptr->lastSequenceMap.end()) {
                         ++count;
-                        //NFD_LOG_DEBUG("is popular");
+                        //NFD_LOG_INFO("is popular");
                     }
                     else
                     {
-                        //NFD_LOG_DEBUG("is not popular");
+                        //NFD_LOG_INFO("is not popular");
                     }
                   }
                 }
                 //如果是攻击后的下一个周期，则在lastLastSequenceMap中查找
                 else{
-                  NFD_LOG_DEBUG("is next period of attack, use lastLastSequenceMap to detect");
+                  NFD_LOG_INFO("is next period of attack, use lastLastSequenceMap to detect");
                   for (uint64_t content : ptr->lastContentSeriesOfFace[faceId]) {
                     if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
                         ++count;
-                        //NFD_LOG_DEBUG("is popular");
+                        //NFD_LOG_INFO("is popular");
                     }
                     else
                     {
-                        //NFD_LOG_DEBUG("is not popular");
+                        //NFD_LOG_INFO("is not popular");
                     }
                   }
                 }
@@ -470,10 +470,10 @@ void detectWDCallback(Forwarder *ptr)
                 {
                   //整数相除想得到小数的话要先转换
                   double popularRate = static_cast<double>(count) / static_cast<double>(ptr->lastContentSeriesOfFace[faceId].size());
-                  NFD_LOG_DEBUG("Face ID: " << faceId << " popular rate: " << popularRate);
+                  NFD_LOG_INFO("Face ID: " << faceId << " popular rate: " << popularRate);
                   if (popularRate < ptr->popularRateLimit) {
                       ptr->Malicious.insert(faceId);
-                      NFD_LOG_DEBUG("Face ID: " << faceId << " is malicious");
+                      NFD_LOG_INFO("Face ID: " << faceId << " is malicious");
                       //设置isEndOfPeriodOfDetectAttack为true
                       ptr->isEndOfPeriodOfDetectAttack = true;
                   }
@@ -482,19 +482,19 @@ void detectWDCallback(Forwarder *ptr)
             //测试其他face的popular rate
             // for(auto entry : ptr->lastContentSeriesOfFace)
             // {
-            //     NFD_LOG_DEBUG("Face ID: " << entry.first);
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
             //     int count = 0;
             //     for (uint64_t content : entry.second) {
             //       //如果不是攻击后的下一个周期，则在lastSequenceMap中查找
             //       if(!ptr->isNextPeriodOfAttack){
-            //         NFD_LOG_DEBUG("content: " << content);
+            //         NFD_LOG_INFO("content: " << content);
             //         if (ptr->lastSequenceMap.find(content) != ptr->lastSequenceMap.end()) {
             //             ++count;
-            //             //NFD_LOG_DEBUG("is popular");
+            //             //NFD_LOG_INFO("is popular");
             //         }
             //         else
             //         {
-            //             //NFD_LOG_DEBUG("is not popular");
+            //             //NFD_LOG_INFO("is not popular");
             //         }
             //       }
             //       //如果是攻击后的下一个周期，则在lastLastSequenceMap中查找
@@ -502,18 +502,18 @@ void detectWDCallback(Forwarder *ptr)
             //       {
             //         if (ptr->lastLastSequenceMap.find(content) != ptr->lastLastSequenceMap.end()) {
             //             ++count;
-            //             //NFD_LOG_DEBUG("is popular");
+            //             //NFD_LOG_INFO("is popular");
             //         }
             //         else
             //         {
-            //             //NFD_LOG_DEBUG("is not popular");
+            //             //NFD_LOG_INFO("is not popular");
             //         }
             //       }
             //     }
             //     if(entry.second.size()!=0)
             //     {
             //       double popularRate = static_cast<double>(count) / static_cast<double>(entry.second.size());
-            //       NFD_LOG_DEBUG("Face ID: " << entry.first << " popular rate: " << popularRate);
+            //       NFD_LOG_INFO("Face ID: " << entry.first << " popular rate: " << popularRate);
             //     }
             // }
             //必须要在使用lastSequenceMap或lastLastSequenceMap后更新
@@ -526,12 +526,12 @@ void detectWDCallback(Forwarder *ptr)
     if(ptr->isEndOfPeriodOfDetectAttack){
         ptr->isNextPeriodOfAttack = true;
         ptr->isEndOfPeriodOfDetectAttack = false;
-        NFD_LOG_DEBUG("isNextPeriodOfAttack is true");
-        NFD_LOG_DEBUG("isEndOfPeriodOfDetectAttack is false");
+        NFD_LOG_INFO("isNextPeriodOfAttack is true");
+        NFD_LOG_INFO("isEndOfPeriodOfDetectAttack is false");
     }
     else{
         ptr->isNextPeriodOfAttack = false;
-        NFD_LOG_DEBUG("isNextPeriodOfAttack is false");
+        NFD_LOG_INFO("isNextPeriodOfAttack is false");
     }
     ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
@@ -582,7 +582,7 @@ Forwarder::convertToBoolSeries(const std::map<FaceId, std::vector<uint64_t>>& co
     std::unordered_map<uint64_t, size_t> contentIndex;
     for (size_t i = 0; i < uniqueContentList.size(); ++i) {
         contentIndex[uniqueContentList[i]] = i;
-        //NFD_LOG_DEBUG("Content " << uniqueContentList[i] << " index: " << i);
+        //NFD_LOG_INFO("Content " << uniqueContentList[i] << " index: " << i);
     }
 
     std::vector<std::vector<bool>> boolMatrix(uniqueContentList.size(), std::vector<bool>(contentSeries.size(), false));
@@ -595,14 +595,14 @@ Forwarder::convertToBoolSeries(const std::map<FaceId, std::vector<uint64_t>>& co
         ++col;
     }
     // //打印布尔矩阵
-    // NFD_LOG_DEBUG("boolMatrix: ");
+    // NFD_LOG_INFO("boolMatrix: ");
     // //按列打印
     // std::ostringstream oss;
     // for(size_t i = 0; i < boolMatrix[0].size(); ++i) {
     //     for(size_t j = 0; j < boolMatrix.size(); ++j) {
     //         oss << boolMatrix[j][i];
     //     }
-    //     NFD_LOG_DEBUG(oss.str());
+    //     NFD_LOG_INFO(oss.str());
     // }
 
     return boolMatrix;
@@ -643,12 +643,12 @@ Forwarder::sigMatrixGen(const std::vector<std::vector<bool>>& inputMatrix, int n
         auto sig = sigGen(inputMatrix);
         result.push_back(sig);
         //打印签名矩阵
-        // NFD_LOG_DEBUG("Signature ");
+        // NFD_LOG_INFO("Signature ");
         // std::ostringstream oss;
         // for (size_t j = 0; j < sig.size(); ++j) {
         //     oss << sig[j] << " ";
         // }
-        // NFD_LOG_DEBUG(oss.str());
+        // NFD_LOG_INFO(oss.str());
     }
     return result;
 }
@@ -678,17 +678,17 @@ Forwarder::minHashLSH(const std::vector<std::vector<bool>>& inputMatrix, int b, 
 
     while (end <= n) {
         ++count;
-        //NFD_LOG_DEBUG("count: " << count);
+        //NFD_LOG_INFO("count: " << count);
         for (size_t colNum = 0; colNum < sigMatrix[0].size(); ++colNum) {
-            //NFD_LOG_DEBUG("colNum: " << colNum);
+            //NFD_LOG_INFO("colNum: " << colNum);
             std::ostringstream oss;
             for (int i = begin; i < end; ++i) {
                 oss << sigMatrix[i][colNum] << ",";
             }
             oss << count;
-            //NFD_LOG_DEBUG("band: " << oss.str());
+            //NFD_LOG_INFO("band: " << oss.str());
             auto md5 = computeMD5(oss.str());
-            //NFD_LOG_DEBUG("MD5: " << md5);
+            //NFD_LOG_INFO("MD5: " << md5);
             std::string tag = md5;
 
             if (hashBuckets.find(tag) == hashBuckets.end()) {
@@ -702,14 +702,14 @@ Forwarder::minHashLSH(const std::vector<std::vector<bool>>& inputMatrix, int b, 
     }
 
     // LSH聚类结果（未合并）
-    // NFD_LOG_DEBUG("LSH output before merging: ");
+    // NFD_LOG_INFO("LSH output before merging: ");
     // for (const auto& bucket : hashBuckets) {
-    //     NFD_LOG_DEBUG(" LSH Bucket " << bucket.first << ":");
+    //     NFD_LOG_INFO(" LSH Bucket " << bucket.first << ":");
     //     std::ostringstream oss;
     //     for (FaceId faceId : bucket.second) {
     //         oss << faceId << " ";
     //     }
-    //     NFD_LOG_DEBUG("  Face IDs: " << oss.str());
+    //     NFD_LOG_INFO("  Face IDs: " << oss.str());
     // }
 
     // LSH聚类结果中，把存在两个以上元素的bucket筛选出来，对这些bucket，如果包含的元素有交叉，则所在的bucket的所有元素放在一类，输出有多少类，且每类的face是什么
@@ -765,17 +765,17 @@ Forwarder::calculateMean(const std::vector<int64_t>& data) {
 // F 检验
 bool 
 Forwarder::fTest(double var1, double var2, size_t size1, size_t size2, double alpha) {
-    NFD_LOG_DEBUG("size1: " << size1 << " size2: " << size2);
+    NFD_LOG_INFO("size1: " << size1 << " size2: " << size2);
     double f = var1 / var2;
-    NFD_LOG_DEBUG("F-test value: " << f);
+    NFD_LOG_INFO("F-test value: " << f);
 
     // 使用 boost 库计算临界值
     boost::math::fisher_f_distribution<double> f_dist(size1 - 1, size2 - 1);
     double lowerCriticalValue = boost::math::quantile(f_dist, alpha / 2);
     double upperCriticalValue = boost::math::quantile(boost::math::complement(f_dist, alpha / 2));
 
-    NFD_LOG_DEBUG("F-test lower critical value: " << lowerCriticalValue);
-    NFD_LOG_DEBUG("F-test upper critical value: " << upperCriticalValue);
+    NFD_LOG_INFO("F-test lower critical value: " << lowerCriticalValue);
+    NFD_LOG_INFO("F-test upper critical value: " << upperCriticalValue);
 
     return f > lowerCriticalValue && f < upperCriticalValue;
 }
@@ -783,16 +783,16 @@ Forwarder::fTest(double var1, double var2, size_t size1, size_t size2, double al
 // t 检验
 bool 
 Forwarder::tTest(double mean1, double mean2, double var1, double var2, size_t size1, size_t size2, double alpha) {
-    NFD_LOG_DEBUG("size1: " << size1 << " size2: " << size2);
+    NFD_LOG_INFO("size1: " << size1 << " size2: " << size2);
     double sw2 = ((size1 - 1) * var1 + (size2 - 1) * var2) / (size1 + size2 - 2);
     double t = (mean1 - mean2) / std::sqrt(sw2 * (1.0 / size1 + 1.0 / size2));
-    NFD_LOG_DEBUG("t-test value: " << t);
+    NFD_LOG_INFO("t-test value: " << t);
 
     // 使用 boost 库计算临界值
     boost::math::students_t_distribution<double> t_dist(size1 + size2 - 2);
     double criticalValue = boost::math::quantile(boost::math::complement(t_dist, alpha / 2));
 
-    NFD_LOG_DEBUG("t-test critical value: " << criticalValue);
+    NFD_LOG_INFO("t-test critical value: " << criticalValue);
 
     return std::abs(t) < criticalValue;
 }
@@ -812,7 +812,7 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
     }
 
     for (auto& cluster : data) {
-        NFD_LOG_DEBUG("Cluster " << cluster.first << ": ");
+        NFD_LOG_INFO("Cluster " << cluster.first << ": ");
         auto& faceIds = cluster.second;
         bool foundFirstPair = false;
         FaceId referenceFaceId = -1;
@@ -820,22 +820,22 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
         size_t secondIndex = 0;
 
         for (size_t i = 0; i < faceIds.size(); ++i) {
-            NFD_LOG_DEBUG("Face " << faceIds[i]);
+            NFD_LOG_INFO("Face " << faceIds[i]);
             //打印intervalSeries
             std::ostringstream oss;
             for (const auto& val : lastIntervalSeriesOfFace.at(faceIds[i])) {
                 oss << val << " ";
             }  
-            NFD_LOG_DEBUG("  " << oss.str());
+            NFD_LOG_INFO("  " << oss.str());
             for (size_t j = i + 1; j < faceIds.size(); ++j) {
-                NFD_LOG_DEBUG("Face " << faceIds[j]);
+                NFD_LOG_INFO("Face " << faceIds[j]);
                 //打印intervalSeries
                 oss.str("");
                 oss.clear();
                 for (const auto& val : lastIntervalSeriesOfFace.at(faceIds[j])) {
                     oss << val << " ";
                 }
-                NFD_LOG_DEBUG("  " << oss.str());
+                NFD_LOG_INFO("  " << oss.str());
                 const auto& sample1 = lastIntervalSeriesOfFace.at(faceIds[i]);
                 const auto& sample2 = lastIntervalSeriesOfFace.at(faceIds[j]);
 
@@ -843,27 +843,27 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
                 double var1 = meanVarianceCache[faceIds[i]].second;
                 double mean2 = meanVarianceCache[faceIds[j]].first;
                 double var2 = meanVarianceCache[faceIds[j]].second;
-                NFD_LOG_DEBUG("mean1: " << mean1 << " var1: " << var1);
-                NFD_LOG_DEBUG("mean2: " << mean2 << " var2: " << var2);
+                NFD_LOG_INFO("mean1: " << mean1 << " var1: " << var1);
+                NFD_LOG_INFO("mean2: " << mean2 << " var2: " << var2);
 
                 if (fTest(var1, var2, sample1.size(), sample2.size(), alpha)) {
                     if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
-                        NFD_LOG_DEBUG("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " have equal means and variances.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " have equal means and variances.");
                         finalSuspect1.insert(faceIds[i]);
                         finalSuspect1.insert(faceIds[j]);
                         referenceFaceId = faceIds[i];
                         firstIndex = i;
                         secondIndex = j;
                         foundFirstPair = true;
-                        NFD_LOG_DEBUG("Cluster " << cluster.first << ": First pair found - Face " << faceIds[i] << " and Face " << faceIds[j] << " have equal means and variances.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": First pair found - Face " << faceIds[i] << " and Face " << faceIds[j] << " have equal means and variances.");
                         break;
                     }
                     else{
-                        NFD_LOG_DEBUG("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal means.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal means.");
                     }
                 }
                 else{
-                    NFD_LOG_DEBUG("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal variances.");
+                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal variances.");
                 }
             }
 
@@ -874,9 +874,9 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
 
         if (foundFirstPair) {
             // 只保留 j+1 之后 的 face
-            NFD_LOG_DEBUG("referenceFaceId: " << referenceFaceId);
+            NFD_LOG_INFO("referenceFaceId: " << referenceFaceId);
             for (size_t i = secondIndex+1; i < faceIds.size(); ++i) {
-                NFD_LOG_DEBUG("Face " << faceIds[i]);
+                NFD_LOG_INFO("Face " << faceIds[i]);
                 const auto& sample1 = lastIntervalSeriesOfFace.at(referenceFaceId);
                 const auto& sample2 = lastIntervalSeriesOfFace.at(faceIds[i]);
 
@@ -888,20 +888,20 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
                 if (fTest(var1, var2, sample1.size(), sample2.size(), alpha)) {
                     if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
                         finalSuspect1.insert(faceIds[i]);
-                        NFD_LOG_DEBUG("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " have equal means and variances.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " have equal means and variances.");
                     } else {
-                        NFD_LOG_DEBUG("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " do not have equal means.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " do not have equal means.");
                     }
                 } else {
-                    NFD_LOG_DEBUG("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " do not have equal variances.");
+                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " do not have equal variances.");
                 }
             }
         }
     }
 
-    NFD_LOG_DEBUG("Final Suspect1 Faces: ");
+    NFD_LOG_INFO("Final Suspect1 Faces: ");
     for (const auto& faceId : finalSuspect1) {
-        NFD_LOG_DEBUG(faceId);
+        NFD_LOG_INFO(faceId);
     }
 }
 
@@ -925,8 +925,9 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
             n = double(increasesAboveMaxCount[faceId]+1) / double(numOfSmallPreiod[faceId]);
         }
         // 使用n作为放大因子
-        double feature = std::exp(length / validRange + n*10);
-        NFD_LOG_DEBUG("Face " << faceId << " validRange: " << validRange 
+        //double feature = std::exp(length / validRange + n*10);
+        double feature = std::exp(length / validRange * n * 10);
+        NFD_LOG_INFO("Face " << faceId << " validRange: " << validRange 
                     << " length: " << length << " n: " << n << " feature: " << feature);
         inputData[std::to_string(faceId)] = feature;
     }
@@ -947,13 +948,33 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
     outputFile.close();
 
     // 处理检测结果
-    double anomaly_threshold = -0.2; // 设定异常分数阈值
+    // double anomaly_threshold = -0.2; // 设定异常分数阈值
+    // for (const auto& faceId : outputData.getMemberNames()) {
+    //     const Json::Value& result = outputData[faceId];
+    //     int prediction = result["prediction"].asInt();
+    //     double anomaly_score = result["anomaly_score"].asDouble();
+    //     NFD_LOG_INFO("Face " << faceId << " prediction: " << prediction << " anomaly_score: " << anomaly_score);
+    //     if (anomaly_score < anomaly_threshold) {
+    //         finalSuspect2.insert(std::stoi(faceId));
+    //     }
+    // }
+    //求异常分数的均值
+    double sum = 0;
     for (const auto& faceId : outputData.getMemberNames()) {
         const Json::Value& result = outputData[faceId];
-        int prediction = result["prediction"].asInt();
         double anomaly_score = result["anomaly_score"].asDouble();
-        NFD_LOG_DEBUG("Face " << faceId << " prediction: " << prediction << " anomaly_score: " << anomaly_score);
-        if (anomaly_score < anomaly_threshold) {
+        sum += anomaly_score;
+    }
+    double mean = sum / outputData.getMemberNames().size();
+    NFD_LOG_INFO("mean of anomaly score: " << mean);
+    //异常分数的阈值为-2(0.5-sqrt(mean))^2
+    double threshold = -2 * (0.5 - std::sqrt(mean)) * (0.5 - std::sqrt(mean));
+    NFD_LOG_INFO("threshold of anomaly score: " << threshold);
+    for (const auto& faceId : outputData.getMemberNames()) {
+        const Json::Value& result = outputData[faceId];
+        double anomaly_score = result["anomaly_score"].asDouble();
+        NFD_LOG_INFO("Face " << faceId << " anomaly_score: " << anomaly_score);
+        if (anomaly_score < threshold) {
             finalSuspect2.insert(std::stoi(faceId));
         }
     }
@@ -1013,7 +1034,7 @@ Forwarder::Forwarder(FaceTable& faceTable)
 
   SetDetectWatchDog(ns3::MilliSeconds(1000));
   SetMetricsWatchDog(ns3::MilliSeconds(500));
-  SetInterestCountWatchDog(ns3::MilliSeconds(20)); // 新增速率增长次数的统计
+  SetInterestCountWatchDog(ns3::MilliSeconds(50)); // 新增速率增长次数的统计
 }
 
 Forwarder::~Forwarder() = default;
@@ -1075,7 +1096,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
       // 提取低32位
       uint32_t lowBits = tagRead & 0xFFFFFFFF;
-      NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+      NFD_LOG_DEBUG("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
       if(highBits ==0){
         NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
@@ -1099,6 +1120,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
             //因为internal类型的兴趣包名形如/localhost/nfd/faces/events/seq=3，按照下面的方法获取seq会出现错误，
                 //而且不会对该函数报错，而是仍然运行成功，但是log显示兴趣包转发不出去
       auto seq = interest.getName().get(1).toSequenceNumber();
+      numofAllInterest++;
+      if(seq > seqofMaliciousInterest)
+      {
+          numofMaliciousInterest++;
+      }
       // 插入到unordered_map中
       if (curSequenceMap.size() < sequenceMapCapacity || curSequenceMap.find(seq) != curSequenceMap.end()) {
         curSequenceMap[seq]++;
@@ -1366,7 +1392,7 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
   uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
   // 提取低32位
   uint32_t lowBits = tagRead & 0xFFFFFFFF;
-  NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+  NFD_LOG_DEBUG("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
   if(highBits ==0){
      NFD_LOG_DEBUG("normal user interest hit");
      numOfHitNormalUserInterest++;
@@ -1842,33 +1868,51 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     //消费者节点
     return;
   }
-  if(ptr->numOfUnpopularData + ptr->numOfPopularData == 0){
+  if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
     return;
   }
 
+  double receivedMaliciousInterestRatio = 0;
+  NFD_LOG_INFO("numofAllInterest= "<<ptr->numofAllInterest);
+  NFD_LOG_INFO("numofMaliciousInterest= "<<ptr->numofMaliciousInterest);
+  if(ptr->numofAllInterest!=0){
+    receivedMaliciousInterestRatio = (double)ptr->numofMaliciousInterest / (double)ptr->numofAllInterest;
+    NFD_LOG_INFO("receivedMaliciousInterestRatio= "<<receivedMaliciousInterestRatio);
+  }
+
   double normalHitRatio = 0;
-  NFD_LOG_DEBUG("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
-  NFD_LOG_DEBUG("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+  NFD_LOG_INFO("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+  NFD_LOG_INFO("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
   if(ptr->numOfReceivedNormalUserInterest!=0){
     normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
-    NFD_LOG_DEBUG("normalHitRatio= "<<normalHitRatio);
+    NFD_LOG_INFO("normalHitRatio= "<<normalHitRatio);
   }
 
   double detectionRatio = 0;
-  NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
-  NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+  NFD_LOG_INFO("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+  NFD_LOG_INFO("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
   if(ptr->numOfUnpopularData!=0){
     detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
-    NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
+    NFD_LOG_INFO("detectionRatio= "<<detectionRatio);
   }
 
   double falseAlarmRatio = 0;
-  NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
-  NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+  NFD_LOG_INFO("numOfPopularData= "<<ptr->numOfPopularData);
+  NFD_LOG_INFO("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){
     falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
-    NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
+    NFD_LOG_INFO("falseAlarmRatio= "<<falseAlarmRatio);
+  }
+
+  double cacheAccuracy = 0;
+  int numOfCacheOfPopularData = ptr->numOfPopularData - ptr->numOfNotCacheOfPopularData;
+  int numOfCacheOfUnpopularData = ptr->numOfUnpopularData - ptr->numOfNotCacheOfUnpopularData;
+  NFD_LOG_INFO("numOfCacheOfPopularData= "<<numOfCacheOfPopularData);
+  NFD_LOG_INFO("numOfCacheOfUnpopularData= "<<numOfCacheOfUnpopularData);
+  if(numOfCacheOfPopularData+numOfCacheOfUnpopularData!=0){
+    cacheAccuracy = (double)(numOfCacheOfPopularData) / (double)(numOfCacheOfPopularData+numOfCacheOfUnpopularData);
+    NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
   }
   //注意：这里的路径需要根据实际情况修改
   std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-ours.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
@@ -1877,6 +1921,9 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   }
   outFile.close();
 
+  //清空数据
+  ptr->numofAllInterest = 0;
+  ptr->numofMaliciousInterest = 0;
   ptr->numOfHitNormalUserInterest = 0;
   ptr->numOfReceivedNormalUserInterest = 0;
   ptr->numOfNotCacheOfUnpopularData = 0;

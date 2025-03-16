@@ -301,7 +301,11 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   int numOfUnpopularData = 0;//遇到不流行内容的数量
   int numOfPopularData = 0;//遇到流行内容的数量
   int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
-  int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
+  int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量  
+  
+  int numofMaliciousInterest = 0;//恶意请求数量
+  int numofAllInterest = 0;//总请求数量
+  int seqofMaliciousInterest = 9800;//恶意请求的seq
 
   // 新增的Watchdog和相关数据结构
   ns3::Watchdog interestCountWD;
