@@ -183,7 +183,7 @@ public:
   ns3::Time metricsWatchdogPeriod = ns3::MilliSeconds(500);
 
   std::unordered_map<uint64_t, int> numOfInterest;//每个内容名的请求数量
-  int maliciousLimit = 15;//恶意节点的请求数量距离均值的倍数限制
+  int maliciousLimit = 10;//恶意节点的请求数量距离均值的倍数限制
   std::unordered_set<uint64_t> malicious;//恶意
 
 
@@ -198,6 +198,10 @@ public:
   int numOfPopularData = 0;//遇到流行内容的数量
   int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
   int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
+  
+  int numofMaliciousInterest = 0;//恶意请求数量
+  int numofAllInterest = 0;//总请求数量
+  int seqofMaliciousInterest = 9800;//恶意请求的seq
 
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
