@@ -129,7 +129,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
         // 提取低32位
         uint32_t lowBits = tagRead & 0xFFFFFFFF;
-      NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+      NFD_LOG_DEBUG("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
       if(highBits ==0){
         NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
@@ -142,14 +142,19 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       uint64_t tagWrite = tagRead & 0xFFFF0000FFFFFFFF;
       interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
 
-      //统计seq的数目到numOfInterest
-      if(numOfInterest.find(seq) == numOfInterest.end())
+      // //统计seq的数目到numOfInterest
+      // if(numOfInterest.find(seq) == numOfInterest.end())
+      // {
+      //     numOfInterest[seq] = 1;
+      // }
+      // else
+      // {
+      //     numOfInterest[seq]++;
+      // }
+      numofAllInterest++;
+      if(seq > seqofMaliciousInterest)
       {
-          numOfInterest[seq] = 1;
-      }
-      else
-      {
-          numOfInterest[seq]++;
+          numofMaliciousInterest++;
       }
 
       auto faceId = ingress.face.getId();
@@ -312,7 +317,7 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
   uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
   // 提取低32位
   uint32_t lowBits = tagRead & 0xFFFFFFFF;
-  NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+  NFD_LOG_DEBUG("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
   if(highBits ==0){
      NFD_LOG_DEBUG("normal user interest hit");
      numOfHitNormalUserInterest++;
@@ -747,35 +752,54 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     //消费者节点
     return;
   }
-  if(ptr->numOfUnpopularData + ptr->numOfPopularData == 0){
+  if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
     return;
   }
 
+  double receivedMaliciousInterestRatio = 0;
+  NFD_LOG_INFO("numofAllInterest= "<<ptr->numofAllInterest);
+  NFD_LOG_INFO("numofMaliciousInterest= "<<ptr->numofMaliciousInterest);
+  if(ptr->numofAllInterest!=0){
+    receivedMaliciousInterestRatio = (double)ptr->numofMaliciousInterest / (double)ptr->numofAllInterest;
+    NFD_LOG_INFO("receivedMaliciousInterestRatio= "<<receivedMaliciousInterestRatio);
+  }
+
   double normalHitRatio = 0;
-  NFD_LOG_DEBUG("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
-  NFD_LOG_DEBUG("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+  NFD_LOG_INFO("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+  NFD_LOG_INFO("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
   if(ptr->numOfReceivedNormalUserInterest!=0){
     normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
-    NFD_LOG_DEBUG("normalHitRatio= "<<normalHitRatio);
+    NFD_LOG_INFO("normalHitRatio= "<<normalHitRatio);
   }
 
   double detectionRatio = 0;
-  NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
-  NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+  //numOfNotCacheOfUnpopularData始终为0
+  NFD_LOG_INFO("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+  NFD_LOG_INFO("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
   if(ptr->numOfUnpopularData!=0){
     detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
-    NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
+    NFD_LOG_INFO("detectionRatio= "<<detectionRatio);
   }
 
   double falseAlarmRatio = 0;
-  NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
-  NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+  //numOfNotCacheOfPopularData始终为0
+  NFD_LOG_INFO("numOfPopularData= "<<ptr->numOfPopularData);
+  NFD_LOG_INFO("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){
     falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
-    NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
+    NFD_LOG_INFO("falseAlarmRatio= "<<falseAlarmRatio);
   }
 
+  double cacheAccuracy = 0;
+  int numOfCacheOfPopularData = ptr->numOfPopularData - ptr->numOfNotCacheOfPopularData;
+  int numOfCacheOfUnpopularData = ptr->numOfUnpopularData - ptr->numOfNotCacheOfUnpopularData;
+  NFD_LOG_INFO("numOfCacheOfPopularData= "<<numOfCacheOfPopularData);
+  NFD_LOG_INFO("numOfCacheOfUnpopularData= "<<numOfCacheOfUnpopularData);
+  if(numOfCacheOfPopularData+numOfCacheOfUnpopularData!=0){
+    cacheAccuracy = (double)(numOfCacheOfPopularData) / (double)(numOfCacheOfPopularData+numOfCacheOfUnpopularData);
+    NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
+  }
   //注意：这里的路径需要根据实际情况修改
   std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-empty.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
   if (outFile.is_open()) {
@@ -783,6 +807,9 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   }
   outFile.close();
 
+  //清空数据
+  ptr->numofAllInterest = 0;
+  ptr->numofMaliciousInterest = 0;
   ptr->numOfHitNormalUserInterest = 0;
   ptr->numOfReceivedNormalUserInterest = 0;
   ptr->numOfNotCacheOfUnpopularData = 0;
