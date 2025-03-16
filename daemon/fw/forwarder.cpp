@@ -59,10 +59,10 @@ const std::string CFG_FORWARDER = "forwarder";
 void detectWDCallback(Forwarder *ptr)
 {
     ptr->wdCount++;
-    NFD_LOG_DEBUG("detectWDCallback");
+    NFD_LOG_INFO("detectWDCallback");
     if(ptr->numOfInterest.empty())
     {
-        NFD_LOG_DEBUG("numOfInterest is empty");
+        NFD_LOG_INFO("numOfInterest is empty");
         return;
     }
     //统计numOfInterest占的比例
@@ -98,7 +98,7 @@ void detectWDCallback(Forwarder *ptr)
             //outfile2 << it->first << "\t" << avgIntervalOfInterest[it->first] << "\n";
             maxavgInterval = std::max(maxavgInterval, avgIntervalOfInterest[it->first]);
         }
-        NFD_LOG_DEBUG("maxavgInterval= " << maxavgInterval);
+        NFD_LOG_INFO("maxavgInterval= " << maxavgInterval);
         //outfile2 << "maxavgInterval= " << maxavgInterval << "\n";
 
         // 对于 intervalSeriesOfInterest 为空的 seq，将其均值取为 maxavgInterval 到 watchdogPeriod 之间的随机值
@@ -106,7 +106,7 @@ void detectWDCallback(Forwarder *ptr)
             if (it->second.size() == 0) {
                 avgIntervalOfInterest[it->first] = maxavgInterval + rand() % (ptr->detectWatchdogPeriod.GetMicroSeconds() - maxavgInterval);
                 //outfile2 << it->first << "\t" << avgIntervalOfInterest[it->first] << "\n";
-                // NFD_LOG_DEBUG("seq= " << it->first << " avgInterval= " << avgIntervalOfInterest[it->first]);
+                // NFD_LOG_INFO("seq= " << it->first << " avgInterval= " << avgIntervalOfInterest[it->first]);
             }
         }
     //     outfile2.close();
@@ -127,7 +127,7 @@ void detectWDCallback(Forwarder *ptr)
     std::map<uint64_t, uint64_t> center;
     double dc = 0.0;
     int n = data.size();
-    NFD_LOG_DEBUG("n= "<<n);
+    NFD_LOG_INFO("n= "<<n);
 
     // 计算欧几里德距离
     for (int i = 0; i < n; ++i) {
@@ -138,7 +138,7 @@ void detectWDCallback(Forwarder *ptr)
                 std::pow(std::get<1>(data[i]) - std::get<1>(data[j]), 2) * ptr->k1 +
                 std::pow(std::get<2>(data[i]) - std::get<2>(data[j]), 2) * ptr->k2
             );
-            //NFD_LOG_DEBUG("seq1= "<<seq_i<<" seq2= "<<seq_j<<" epsilon= "<<epsilon[seq_i][seq_j]);
+            //NFD_LOG_INFO("seq1= "<<seq_i<<" seq2= "<<seq_j<<" epsilon= "<<epsilon[seq_i][seq_j]);
         }
     }
 
@@ -151,7 +151,7 @@ void detectWDCallback(Forwarder *ptr)
     }
     std::sort(distances.begin(), distances.end());
     dc = distances[distances.size() * 0.02];
-    NFD_LOG_DEBUG("dc= "<<dc);
+    NFD_LOG_INFO("dc= "<<dc);
 
     // 计算ρ
     double maxRho = 0.0;
@@ -166,7 +166,7 @@ void detectWDCallback(Forwarder *ptr)
         }
         maxRho = std::max(maxRho, rho[seq_i]);
         minRho = std::min(minRho, rho[seq_i]);
-        //NFD_LOG_DEBUG("seq= "<<seq_i<<" rho= "<<rho[seq_i]);
+        //NFD_LOG_INFO("seq= "<<seq_i<<" rho= "<<rho[seq_i]);
     }
 
     std::vector<uint64_t> seqs;
@@ -193,7 +193,7 @@ void detectWDCallback(Forwarder *ptr)
                 }
             }
         }
-        //NFD_LOG_DEBUG("seq= " << seq_i << " delta= " << delta[seq_i]);
+        //NFD_LOG_INFO("seq= " << seq_i << " delta= " << delta[seq_i]);
         minDelta = std::min(minDelta, delta[seq_i]);
         maxDelta = std::max(maxDelta, delta[seq_i]);
     }
@@ -202,15 +202,15 @@ void detectWDCallback(Forwarder *ptr)
     double rho_threshold = (minRho + maxRho) / 5;
     double delta_threshold = (minDelta + maxDelta) / 5;
 
-    NFD_LOG_DEBUG("rho_threshold= "<<rho_threshold<<" delta_threshold= "<<delta_threshold);
+    NFD_LOG_INFO("rho_threshold= "<<rho_threshold<<" delta_threshold= "<<delta_threshold);
     std::vector<uint64_t> centers;
     for (const auto& item : data) {
         uint64_t seq = std::get<0>(item);
         if (rho[seq] * delta[seq] > rho_threshold * delta_threshold) {
-            NFD_LOG_DEBUG("seq= "<<seq<<" rho= "<<rho[seq]<<" delta= "<<delta[seq]);
+            NFD_LOG_INFO("seq= "<<seq<<" rho= "<<rho[seq]<<" delta= "<<delta[seq]);
             //if(rho[seq] > rho_threshold  && delta[seq] > delta_threshold){
                 centers.push_back(seq);
-                NFD_LOG_DEBUG("center= "<<seq);
+                NFD_LOG_INFO("center= "<<seq);
             //}
         }
     }
@@ -219,7 +219,7 @@ void detectWDCallback(Forwarder *ptr)
     std::map<uint64_t, int> labels;
     for (size_t i = 0; i < centers.size(); ++i) {
         labels[centers[i]] = i;
-        NFD_LOG_DEBUG("seq= "<<centers[i]<<" center label= "<<i);
+        NFD_LOG_INFO("seq= "<<centers[i]<<" center label= "<<i);
     }
 
 
@@ -236,7 +236,7 @@ void detectWDCallback(Forwarder *ptr)
                 }
             }
             labels[seq_i] = labels[nearest_point];
-            //NFD_LOG_DEBUG("seq= " << seq_i << " assigned label from seq= " << nearest_point << " label= " << labels[nearest_point]);
+            //NFD_LOG_INFO("seq= " << seq_i << " assigned label from seq= " << nearest_point << " label= " << labels[nearest_point]);
         }
     }
 
@@ -257,7 +257,7 @@ void detectWDCallback(Forwarder *ptr)
     //     seqs_str.push_back(std::to_string(std::get<0>(d)));
     //     point_colors.push_back(colors[labels[std::get<0>(d)] % colors.size()]);
     // }
-    // NFD_LOG_DEBUG("set x y");
+    // NFD_LOG_INFO("set x y");
 
     // auto start = std::chrono::high_resolution_clock::now();
     // // 清除当前图形
@@ -278,7 +278,7 @@ void detectWDCallback(Forwarder *ptr)
     // */
     // auto end = std::chrono::high_resolution_clock::now();
     // std::chrono::duration<double> elapsed = end - start;
-    // NFD_LOG_DEBUG("scatter time "<<elapsed.count());
+    // NFD_LOG_INFO("scatter time "<<elapsed.count());
 
     // start = std::chrono::high_resolution_clock::now();
     // plt::xlabel("avgIntervalOfInterest");
@@ -287,7 +287,7 @@ void detectWDCallback(Forwarder *ptr)
     // plt::show(false);
     // end = std::chrono::high_resolution_clock::now();
     // elapsed = end - start;
-    // NFD_LOG_DEBUG("plot and save figure time "<<elapsed.count());
+    // NFD_LOG_INFO("plot and save figure time "<<elapsed.count());
 
     // // 保存数据到文件
     // std::string filename = "/media/sf_ndnsim/cluster_node" + std::to_string(ptr->mynodeid) +"period" + std::to_string(ptr->wdCount) + ".txt";
@@ -297,9 +297,9 @@ void detectWDCallback(Forwarder *ptr)
     //         outfile3 << "seq: "<<seqs_str[i]<<", x: " << x[i] << ", y: " << y[i] << ", label: " << labels[std::get<0>(data[i])] << ", color: " << point_colors[i] << "\n";
     //     }
     //     outfile3.close();
-    //     NFD_LOG_DEBUG("数据已保存到文件: " << filename);
+    //     NFD_LOG_INFO("数据已保存到文件: " << filename);
     // } else {
-    //     NFD_LOG_DEBUG("无法打开文件: " << filename);
+    //     NFD_LOG_INFO("无法打开文件: " << filename);
     // }
 
     std::vector<uint64_t> popularSeqs;
@@ -320,7 +320,8 @@ void detectWDCallback(Forwarder *ptr)
         }
     }
     popularSeqs = clusters[popularCluster];
-    NFD_LOG_DEBUG("popularCluster= "<<popularCluster);
+    NFD_LOG_INFO("popularCluster= "<<popularCluster);
+    NFD_LOG_INFO("tau= "<<popularSeqs.size());
     //求unpopularSeqs
     for (const auto& cluster : clusters) {
         if (cluster.first != popularCluster) {
@@ -331,33 +332,39 @@ void detectWDCallback(Forwarder *ptr)
     // 判断攻击
     if (!ptr->prevClusters.empty()) {
         if (clusters.size() == 1) {
-            NFD_LOG_DEBUG("LDA detetct");
+            NFD_LOG_INFO("LDA detetct");
             for (const auto& seq : ptr->preunPopularSeqs) {
                 ptr->malicious.insert(seq);
-                NFD_LOG_DEBUG("detetct seq="<<seq<<" is malicious");
+                NFD_LOG_INFO("detetct seq="<<seq<<" is malicious");
             }
         } else {
             double tau = popularSeqs.size();
             double prevTau = ptr->prevPopularSeqs.size();
-            double curOmega = tau - prevTau / prevTau;
-            NFD_LOG_DEBUG("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*5.2);
-            if (curOmega > ptr->avgOmega*5.2) {
-                NFD_LOG_DEBUG("FLA detetct");
+            NFD_LOG_INFO("tau= "<<tau<<" prevTau= "<<prevTau);
+            double curOmega = double(tau - prevTau) / double(prevTau);
+            NFD_LOG_INFO("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*4);
+            if (curOmega > ptr->avgOmega*4) {
+                NFD_LOG_INFO("FLA detetct");
                 for (const auto& seq : popularSeqs) {
-                    if (std::find(ptr->prevPopularSeqs.begin(), ptr->prevPopularSeqs.end(), seq) == ptr->prevPopularSeqs.end()) {
+                  //修改成只有不在历史流行聚类中的才是恶意，而不是上个周期的流行聚类
+                    if (std::find(ptr->historyAllPopularSeqs.begin(), ptr->historyAllPopularSeqs.end(), seq) == ptr->historyAllPopularSeqs.end()) {
                         ptr->malicious.insert(seq);
-                        NFD_LOG_DEBUG("detect seq="<<seq<<" is malicious");
+                        NFD_LOG_INFO("detect seq="<<seq<<" is malicious");
                     }
                 }
             }
-            ptr->avgOmega = (ptr->avgOmega * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
-            NFD_LOG_DEBUG("nextAvgOmega= "<<ptr->avgOmega);
+            else{
+              //没有攻击才更新avgOmega
+                ptr->avgOmega = (ptr->avgOmega * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
+            }
+            NFD_LOG_INFO("nextAvgOmega= "<<ptr->avgOmega);
         }
     }
 
     ptr->prevClusters = clusters;
     ptr->prevPopularSeqs = popularSeqs;
     ptr->preunPopularSeqs = unpopularSeqs;
+    ptr->historyAllPopularSeqs.insert(ptr->historyAllPopularSeqs.end(), popularSeqs.begin(), popularSeqs.end());
 
     //重置
     ptr->numOfInterest.clear();
@@ -440,9 +447,9 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 {
   // receive Interest
   NFD_LOG_DEBUG("onIncomingInterest in=" << ingress << " interest=" << interest.getName());
-  NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
+  //NFD_LOG_DEBUG("scheme= "<<ingress.face.getRemoteUri().getScheme());
   if(ingress.face.getRemoteUri().getScheme() == "appFace"){
-    NFD_LOG_DEBUG("is consumer node");
+    //NFD_LOG_DEBUG("is consumer node");
     isConsumerNode = true;//消费者节点的nodeid
   }
   //scheme类型有internal(初始建立路径)、appface（消费者节点从应用层获得的）和netdev（网络设备即非消费者节点从其他节点获得的）
@@ -455,13 +462,13 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
       // 提取低32位
       uint32_t lowBits = tagRead & 0xFFFFFFFF;
-      NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+      //NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
       if(highBits ==0){
-        NFD_LOG_DEBUG("normal user interest received");
+        //NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
       }
       if(middleBits == 1){
-        NFD_LOG_DEBUG("is edge node");
+        //NFD_LOG_DEBUG("is edge node");
         isEdgeNode = true;
       }
       //中间16位设置为0，使得接下来的节点不会再判断为edge节点
@@ -490,6 +497,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       {
           numOfInterest[seq]++;
       }
+      numofAllInterest++;
+      if(seq > seqofMaliciousInterest)
+      {
+          numofMaliciousInterest++;
+      }
 
       //统计相同seq之间的时间间隔到intervalSeriesOfInterest
       if(intervalSeriesOfInterest.find(seq) == intervalSeriesOfInterest.end())
@@ -504,7 +516,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
 
 
       auto faceId = ingress.face.getId();
-      NFD_LOG_DEBUG("faceId= "<<faceId);
+      //NFD_LOG_DEBUG("faceId= "<<faceId);
       nfd::face::Transport* mytransport = ingress.face.getTransport();
       ns3::Ptr<ns3::Node> mynode =nullptr;
       ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
@@ -513,7 +525,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
       mynode = p2pNetDevice->GetNode();
       mynodeid = mynode->GetId();
-      NFD_LOG_DEBUG("nodeid"<<mynodeid);
+      //NFD_LOG_DEBUG("nodeid"<<mynodeid);
   }
 
 
@@ -663,9 +675,9 @@ Forwarder::onContentStoreHit(const Interest& interest, const FaceEndpoint& ingre
   uint16_t middleBits = (tagRead >> 32) & 0xFFFF;
   // 提取低32位
   uint32_t lowBits = tagRead & 0xFFFFFFFF;
-  NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
+  //NFD_LOG_INFO("Tag value: high16=" << highBits << ", mid16=" << middleBits<< ", low32=" << lowBits);
   if(highBits ==0){
-     NFD_LOG_DEBUG("normal user interest hit");
+     //NFD_LOG_DEBUG("normal user interest hit");
      numOfHitNormalUserInterest++;
   }
 
@@ -768,7 +780,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
 
   //防御策略是不缓存
   auto prefix = data.getName().getPrefix(-1);
-  NFD_LOG_DEBUG("prefix= "<<prefix);
+  //NFD_LOG_DEBUG("prefix= "<<prefix);
   if(prefix.toUri() == "/prefix"){
       auto seq = data.getName().get(1).toSequenceNumber();
       //统计流行内容和非流行内容收到数目
@@ -780,7 +792,7 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
       }
       if(malicious.find(seq) !=malicious.end())
       {
-          NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, donnot cache");
+          //NFD_LOG_DEBUG("receive seq="<<seq<<" is malicious, donnot cache");
           //统计流行内容和非流行内容不缓存数目
           if(seq<=2000){
             numOfNotCacheOfPopularData++;
@@ -1114,42 +1126,63 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     //消费者节点
     return;
   }
-  if(ptr->numOfUnpopularData + ptr->numOfPopularData == 0){
+  if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
     return;
   }
 
+  double receivedMaliciousInterestRatio = 0;
+  NFD_LOG_INFO("numofAllInterest= "<<ptr->numofAllInterest);
+  NFD_LOG_INFO("numofMaliciousInterest= "<<ptr->numofMaliciousInterest);
+  if(ptr->numofAllInterest!=0){
+    receivedMaliciousInterestRatio = (double)ptr->numofMaliciousInterest / (double)ptr->numofAllInterest;
+    NFD_LOG_INFO("receivedMaliciousInterestRatio= "<<receivedMaliciousInterestRatio);
+  }
+
   double normalHitRatio = 0;
-  NFD_LOG_DEBUG("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
-  NFD_LOG_DEBUG("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+  NFD_LOG_INFO("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+  NFD_LOG_INFO("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
   if(ptr->numOfReceivedNormalUserInterest!=0){
     normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
-    NFD_LOG_DEBUG("normalHitRatio= "<<normalHitRatio);
+    NFD_LOG_INFO("normalHitRatio= "<<normalHitRatio);
   }
 
   double detectionRatio = 0;
-  NFD_LOG_DEBUG("numOfUnpopularData= "<<ptr->numOfUnpopularData);
-  NFD_LOG_DEBUG("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+  NFD_LOG_INFO("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+  NFD_LOG_INFO("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
   if(ptr->numOfUnpopularData!=0){
     detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
-    NFD_LOG_DEBUG("detectionRatio= "<<detectionRatio);
+    NFD_LOG_INFO("detectionRatio= "<<detectionRatio);
   }
 
   double falseAlarmRatio = 0;
-  NFD_LOG_DEBUG("numOfPopularData= "<<ptr->numOfPopularData);
-  NFD_LOG_DEBUG("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+  NFD_LOG_INFO("numOfPopularData= "<<ptr->numOfPopularData);
+  NFD_LOG_INFO("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){
     falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
-    NFD_LOG_DEBUG("falseAlarmRatio= "<<falseAlarmRatio);
+    NFD_LOG_INFO("falseAlarmRatio= "<<falseAlarmRatio);
   }
 
-  //注意：这里的路径需要根据实际情况修改
-  std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-cluster.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
-  if (outFile.is_open()) {
-    outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  double cacheAccuracy = 0;
+  int numOfCacheOfPopularData = ptr->numOfPopularData - ptr->numOfNotCacheOfPopularData;
+  int numOfCacheOfUnpopularData = ptr->numOfUnpopularData - ptr->numOfNotCacheOfUnpopularData;
+  NFD_LOG_INFO("numOfCacheOfPopularData= "<<numOfCacheOfPopularData);
+  NFD_LOG_INFO("numOfCacheOfUnpopularData= "<<numOfCacheOfUnpopularData);
+  if(numOfCacheOfPopularData+numOfCacheOfUnpopularData!=0){
+    cacheAccuracy = (double)(numOfCacheOfPopularData) / (double)(numOfCacheOfPopularData+numOfCacheOfUnpopularData);
+    NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
   }
-  outFile.close();
 
+  // //注意：这里的路径需要根据实际情况修改
+  // std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-cluster.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  // if (outFile.is_open()) {
+  //   outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  // }
+  // outFile.close();
+
+  //清空数据
+  ptr->numofAllInterest = 0;
+  ptr->numofMaliciousInterest = 0;
   ptr->numOfHitNormalUserInterest = 0;
   ptr->numOfReceivedNormalUserInterest = 0;
   ptr->numOfNotCacheOfUnpopularData = 0;

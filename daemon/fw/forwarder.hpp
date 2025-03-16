@@ -189,11 +189,13 @@ public:
   std::map<uint64_t, std::vector<int64_t>> intervalSeriesOfInterest;//每个内容名的请求时间间隔序列
   std::map<uint64_t, ns3::Time> lastInterestTime;//每个内容名上次请求的时刻
   double k1 = 1e-6, k2 =1e4;
+  //double k1 = 0, k2 =1e4;//去掉时间间隔的影响
   std::map<int, std::vector<uint64_t>> prevClusters;
   std::vector<uint64_t> prevPopularSeqs;
   std::vector<uint64_t> preunPopularSeqs;
+  std::vector<uint64_t> historyAllPopularSeqs;
   int totalInterest=0;//总请求数量
-  int avgOmega = 0.8 / 5.2;
+  double avgOmega = 0.2 / 4;//论文中参数是0.8/5.2
   std::unordered_set<uint64_t> malicious;//恶意
 
 
@@ -209,6 +211,9 @@ public:
   int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
   int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
 
+  int numofMaliciousInterest = 0;//恶意请求数量
+  int numofAllInterest = 0;//总请求数量
+  int seqofMaliciousInterest = 9800;//恶意请求的seq
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
