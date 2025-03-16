@@ -186,9 +186,11 @@ public:
   std::map<uint64_t, std::unordered_set<uint64_t>> n_u;//每个内容名的不同用户
   std::unordered_set<uint64_t> n;//不同用户
   std::map<uint64_t, double> rho;//每个内容名的流行度
-  int m=0;//请求总数量
   // std::map<uint64_t, double> av;//每个内容名的平均请求强度
   double lambda = 0.8187;//流行度衰减常数,此处lambda对应论文中e^(-lambda)=e^(-0.2)=0.8187
+  uint timesOfStdOfav = 3;//av的标准差的倍数
+  uint timesOfStdOfr = 3;//r的标准差的倍数
+  uint timesOfStdOfrho = -1;//rho的标准差的倍数
   double thr_av;//平均请求强度的阈值
   double thr_r;//请求强度的阈值
   double thr_rho;//流行度的阈值
@@ -208,6 +210,9 @@ public:
   int numOfNotCacheOfUnpopularData = 0;//遇到不流行内容不缓存的数量
   int numOfNotCacheOfPopularData = 0;//遇到流行内容不缓存的数量
 
+  int numofMaliciousInterest = 0;//恶意请求数量
+  int numofAllInterest = 0;//总请求数量
+  int seqofMaliciousInterest = 9800;//恶意请求的seq
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
