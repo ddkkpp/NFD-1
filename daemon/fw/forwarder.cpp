@@ -134,6 +134,10 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
       }
+      else{
+        NFD_LOG_DEBUG("malicious user interest received");
+        numofMaliciousInterest++;
+      }
       if(middleBits == 1){
         NFD_LOG_DEBUG("is edge node");
         isEdgeNode = true;
@@ -152,10 +156,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       //     numOfInterest[seq]++;
       // }
       numofAllInterest++;
-      if(seq > seqofMaliciousInterest)
-      {
-          numofMaliciousInterest++;
-      }
 
       auto faceId = ingress.face.getId();
       NFD_LOG_DEBUG("faceId= "<<faceId);
@@ -748,12 +748,54 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
 
 void computeForwarderMetricsWDCallback(Forwarder *ptr)
 {
+  if(ptr->mynodeid==0){
+    //producer节点
+    NFD_LOG_INFO("is producer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+    return;
+  }
   if(ptr->isConsumerNode){
     //消费者节点
+    NFD_LOG_INFO("is consumer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
   if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
+    NFD_LOG_INFO("node not start");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+  
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
 
