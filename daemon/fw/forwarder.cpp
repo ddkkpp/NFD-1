@@ -60,7 +60,7 @@ void detectWDCallback(Forwarder *ptr)
     double mean_r = 0, sigma_r = 0, sum_r = 0, sum2_r = 0;
     double mean_rho = 0, sigma_rho = 0, sum_rho = 0, sum2_rho = 0;
 
-    if(ptr->numofAllInterest == 0)
+    if(ptr->numofAllInterest1 == 0)
     {
         return;
     }
@@ -80,8 +80,8 @@ void detectWDCallback(Forwarder *ptr)
         sum_rho += ptr->rho[it->first];
         sum2_rho += ptr->rho[it->first] * ptr->rho[it->first];
 
-        r[it->first] = double(ptr->numOfInterest[it->first]) / double(ptr->numofAllInterest);
-        NFD_LOG_INFO("numOfInterest= "<<ptr->numOfInterest[it->first]<<" numofAllInterest= "<<ptr->numofAllInterest);
+        r[it->first] = double(ptr->numOfInterest[it->first]) / double(ptr->numofAllInterest1);
+        NFD_LOG_INFO("numOfInterest= "<<ptr->numOfInterest[it->first]<<" numofAllInterest1= "<<ptr->numofAllInterest1);
         NFD_LOG_INFO("r= "<<r[it->first]);
         sum_r += r[it->first];
         sum2_r += r[it->first] * r[it->first];
@@ -139,8 +139,8 @@ void detectWDCallback(Forwarder *ptr)
     ptr->n_u.clear();
     //重置n
     ptr->n.clear();
-    //重置numofAllInterest
-    ptr->numofAllInterest = 0;
+    //重置numofAllInterest1
+    ptr->numofAllInterest1 = 0;
     
     ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
@@ -244,6 +244,10 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
       }
+      else{
+        NFD_LOG_DEBUG("malicious user interest received");
+        numofMaliciousInterest++;
+      }
       if(middleBits == 1){
         NFD_LOG_DEBUG("is edge node");
         isEdgeNode = true;
@@ -264,10 +268,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           NFD_LOG_DEBUG("seq= "<<seq<<" numOfInterest= "<<numOfInterest[seq]);
       }
       numofAllInterest++;
-      if(seq > seqofMaliciousInterest)
-      {
-          numofMaliciousInterest++;
-      }
+      numofAllInterest1++;
+
 
       //统计每个seq的不同consumerId数量
       if(n_u.find(seq) == n_u.end())
@@ -915,12 +917,54 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
 
 void computeForwarderMetricsWDCallback(Forwarder *ptr)
 {
+  if(ptr->mynodeid==0){
+    //producer节点
+    NFD_LOG_INFO("is producer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+    return;
+  }
   if(ptr->isConsumerNode){
     //消费者节点
+    NFD_LOG_INFO("is consumer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
   if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
+    NFD_LOG_INFO("node not start");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+  
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
 

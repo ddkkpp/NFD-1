@@ -212,6 +212,7 @@ public:
 
   int numofMaliciousInterest = 0;//恶意请求数量
   int numofAllInterest = 0;//总请求数量
+  int numofAllInterest1 = 0;//总请求数量
   int seqofMaliciousInterest = 9800;//恶意请求的seq
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
