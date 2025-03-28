@@ -52,30 +52,145 @@ const std::string CFG_FORWARDER = "forwarder";
 
 void detectWDCallback(Forwarder *ptr)
 {
-    NFD_LOG_INFO("detectWDCallback");
-    //统计numOfInterest的均值和标准差（用简单方法计算标准差），当数值大于均值加减k倍的标准差时，认为该节点是恶意节点
-    double sum = 0;
-    double sum2 = 0;
-    double mean = 0;
-    double std = 0;
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
-    {
-        sum += it->second;
-        sum2 += it->second * it->second;
+    NFD_LOG_INFO("detectWDCallback - 调用次数: " << ptr->detectWDCallbackCount);
+    
+    // 第一次和第二次调用时，收集数据并计算正常阈值
+    if (ptr->detectWDCallbackCount < 2) {
+        NFD_LOG_INFO("学习阶段(" << ptr->detectWDCallbackCount + 1 << "/2): 收集正常流量数据");
+        
+        // 收集所有请求计数
+        std::vector<int> allCounts;
+        for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++) {
+            allCounts.push_back(it->second);
+        }
+        
+        // 如果数据足够，计算前2%分位数作为阈值
+        if (!allCounts.empty()) {
+          std::sort(allCounts.begin(), allCounts.end());
+          int percentileIndex = std::max(0, static_cast<int>(allCounts.size() * 0.98) - 1);
+          ptr->learnedNormalThreshold = std::max(static_cast<double>(allCounts[percentileIndex]), ptr->learnedNormalThreshold);
+          NFD_LOG_INFO("学习到的正常阈值: " << ptr->learnedNormalThreshold);
+      }
+        
+        ptr->detectWDCallbackCount++;
+        ptr->numOfInterest.clear();
+        ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
+        return;
     }
-    mean = sum / ptr->numOfInterest.size();
-    std = sqrt(sum2 / ptr->numOfInterest.size() - mean * mean);
-    NFD_LOG_INFO("mean= "<<mean<<" std= "<<std);
-    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++)
-    {
-        if(it->second > mean + ptr->maliciousLimit * std || it->second < mean - ptr->maliciousLimit * std)
-        {
-            NFD_LOG_INFO("seq= "<<it->first<<" is malicious");
-            NFD_LOG_INFO("count= "<<it->second);
-            ptr->malicious.insert(it->first);
+    
+    // 从第三次调用开始，使用正式的检测逻辑
+    // 1. 收集当前时间片的监测结果
+    std::vector<double> currentSamples;
+    for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++) {
+        currentSamples.push_back(static_cast<double>(it->second));
+    }
+    
+    // 如果样本太少，使用原始方法
+    if (currentSamples.size() < 5) {
+        NFD_LOG_INFO("样本数量不足，使用简单阈值检测方法");
+        double sum = 0;
+        double sum2 = 0;
+        for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++) {
+            sum += it->second;
+            sum2 += it->second * it->second;
+        }
+        double mean = sum / ptr->numOfInterest.size();
+        double std = sqrt(sum2 / ptr->numOfInterest.size() - mean * mean);
+        double thr = mean + ptr->maliciousLimit * std;
+        
+        // 使用学习到的阈值和简单方法计算的阈值中的较大值
+        double finalThreshold = std::max(ptr->learnedNormalThreshold, thr);
+        
+        NFD_LOG_INFO("简单方法: mean= " << mean << " std= " << std << " threshold= " << thr);
+        NFD_LOG_INFO("最终阈值(max(learnedThreshold, simpleThreshold))= " << finalThreshold);
+        
+        for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++) {
+            NFD_LOG_INFO("seq= " << it->first << " count= " << it->second);
+            if(it->second > finalThreshold) {
+                NFD_LOG_INFO("seq= " << it->first << " is malicious");
+                ptr->malicious.insert(it->first);
+            }
+        }
+    } else {
+        // 2. 蒙特卡洛重采样过程
+        const int numResamples = 10; // 重采样次数
+        const double significance = 0.25; // 显著性水平α
+        
+        std::vector<double> expectationValues;
+        std::vector<double> varianceValues;
+        
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        
+        for (int i = 0; i < numResamples; i++) {
+            // 随机无放回抽样
+            std::vector<double> resample;
+            std::vector<int> indices(currentSamples.size());
+            std::iota(indices.begin(), indices.end(), 0); // 填充0,1,2,...
+            std::shuffle(indices.begin(), indices.end(), gen); // 随机打乱
+            
+            // 构建重采样集 - 只取一半的样本
+            size_t halfSize = currentSamples.size() *0.8;
+            for (size_t j = 0; j < halfSize; j++) {
+                resample.push_back(currentSamples[indices[j]]);
+            }
+            
+            // 计算重采样集的期望和方差
+            double resampleSum = std::accumulate(resample.begin(), resample.end(), 0.0);
+            double resampleMean = resampleSum / resample.size();
+            
+            double resampleVar = 0.0;
+            for (double val : resample) {
+                resampleVar += (val - resampleMean) * (val - resampleMean);
+            }
+            resampleVar /= resample.size();
+            
+            expectationValues.push_back(resampleMean);
+            varianceValues.push_back(resampleVar);
+        }
+        
+        // 3. 计算期望和方差的稳定估计
+        std::sort(expectationValues.begin(), expectationValues.end());
+        std::sort(varianceValues.begin(), varianceValues.end());
+        
+        double stableExpectation = 0;
+        for (double val : expectationValues) {
+            stableExpectation += val;
+        }
+        stableExpectation /= expectationValues.size();
+        
+        double stableVariance = 0;
+        for (double val : varianceValues) {
+            stableVariance += val;
+        }
+        stableVariance /= varianceValues.size();
+        
+        NFD_LOG_INFO("Monte Carlo估计: E(x)= " << stableExpectation << " Var(x)= " << stableVariance);
+        
+        // 4. 根据切比雪夫不等式计算上界
+        // P(|xi - E(xi)| >= ε) < Var(xi) / ε²
+        // 求解ε使P(|xi - E(xi)| >= ε) = significance
+        double epsilon = sqrt(stableVariance / significance);
+        double chebyshevThreshold = stableExpectation + epsilon;
+        
+        // 5. 使用学习到的阈值和切比雪夫上界中的较大值作为最终阈值
+        double finalThreshold = std::max(ptr->learnedNormalThreshold, chebyshevThreshold);
+        
+        NFD_LOG_INFO("切比雪夫上界threshold= " << chebyshevThreshold);
+        NFD_LOG_INFO("学习到的阈值learnedThreshold= " << ptr->learnedNormalThreshold);
+        NFD_LOG_INFO("最终阈值(max(learnedThreshold, chebyshevThreshold))= " << finalThreshold);
+        
+        // 6. 使用新阈值检测恶意流量
+        for(auto it = ptr->numOfInterest.begin(); it != ptr->numOfInterest.end(); it++) {
+            NFD_LOG_INFO("seq= " << it->first << " count= " << it->second);
+            if(it->second > finalThreshold) {
+                NFD_LOG_INFO("seq= " << it->first << " is malicious (detected by combined threshold)");
+                ptr->malicious.insert(it->first);
+            }
         }
     }
-    //重置numOfInterest
+    
+    // 重置numOfInterest
     ptr->numOfInterest.clear();
     
     ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
@@ -179,6 +294,10 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
       }
+      else{
+        NFD_LOG_DEBUG("malicious user interest received");
+        numofMaliciousInterest++;
+      }
       if(middleBits == 1){
         NFD_LOG_DEBUG("is edge node");
         isEdgeNode = true;
@@ -197,10 +316,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           numOfInterest[seq]++;
       }
       numofAllInterest++;
-      if(seq > seqofMaliciousInterest)
-      {
-          numofMaliciousInterest++;
-      }
 
       auto faceId = ingress.face.getId();
       NFD_LOG_DEBUG("faceId= "<<faceId);
@@ -464,6 +579,19 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
     // goto Data unsolicited pipeline
     this->onDataUnsolicited(data, ingress);
     return;
+  }
+
+  auto prefix = data.getName().getPrefix(-1);
+  NFD_LOG_DEBUG("prefix= "<<prefix);
+  if(prefix.toUri() == "/prefix"){
+    auto seq = data.getName().get(1).toSequenceNumber();
+    //统计流行内容和非流行内容收到数目
+    if(seq<=2000){
+      numOfPopularData++;
+    }
+    else{
+      numOfUnpopularData++;
+    }
   }
 
   m_cs.insert(data);
@@ -781,12 +909,54 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
 
 void computeForwarderMetricsWDCallback(Forwarder *ptr)
 {
+  if(ptr->mynodeid==0){
+    //producer节点
+    NFD_LOG_INFO("is producer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+    return;
+  }
   if(ptr->isConsumerNode){
     //消费者节点
+    NFD_LOG_INFO("is consumer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
   if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
+    NFD_LOG_INFO("node not start");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+  
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
 
@@ -815,6 +985,7 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
   }
 
   double falseAlarmRatio = 0;
+  //numOfNotCacheOfPopularData始终为0
   NFD_LOG_INFO("numOfPopularData= "<<ptr->numOfPopularData);
   NFD_LOG_INFO("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
   if(ptr->numOfPopularData!=0){

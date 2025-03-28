@@ -182,10 +182,11 @@ public:
   ns3::Watchdog computeForwarderMetricsWD;
   ns3::Time metricsWatchdogPeriod = ns3::MilliSeconds(500);
 
-  std::unordered_map<uint64_t, int> numOfInterest;//每个内容名的请求数量
-  int maliciousLimit = 10;//恶意节点的请求数量距离均值的倍数限制
+  std::map<uint64_t, int> numOfInterest;//每个内容名的请求数量
+  int maliciousLimit = 2;//恶意节点的请求数量距离均值的倍数限制
+  double learnedNormalThreshold = 0;//学习到的正常用户请求的阈值
   std::unordered_set<uint64_t> malicious;//恶意
-
+  int detectWDCallbackCount = 0; // 记录detectWDCallback被调用的次数
 
   int mynodeid=10000;//节点id,取10000避免与其他节点id重复
   bool isEdgeNode = false;
