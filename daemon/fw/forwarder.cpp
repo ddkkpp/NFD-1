@@ -156,6 +156,7 @@ void detectWDCallback(Forwarder *ptr)
     // 计算ρ
     double maxRho = 0.0;
     double minRho = std::numeric_limits<double>::max();
+    double sumRho = 0.0;
     for (const auto& item : epsilon) {
         uint64_t seq_i = item.first;
         rho[seq_i] = 0;
@@ -164,6 +165,7 @@ void detectWDCallback(Forwarder *ptr)
                 rho[seq_i] += 1;
             }
         }
+        sumRho += rho[seq_i];
         maxRho = std::max(maxRho, rho[seq_i]);
         minRho = std::min(minRho, rho[seq_i]);
         //NFD_LOG_INFO("seq= "<<seq_i<<" rho= "<<rho[seq_i]);
@@ -178,6 +180,7 @@ void detectWDCallback(Forwarder *ptr)
     // 计算δ
     double maxDelta = 0.0;
     double minDelta = std::numeric_limits<double>::max();
+    double sumDelta = 0.0;
     for (size_t i = 0; i < seqs.size(); ++i) {
         uint64_t seq_i = seqs[i];
         if (rho[seq_i] == maxRho) {
@@ -193,29 +196,109 @@ void detectWDCallback(Forwarder *ptr)
                 }
             }
         }
+        sumDelta += delta[seq_i];
         //NFD_LOG_INFO("seq= " << seq_i << " delta= " << delta[seq_i]);
         minDelta = std::min(minDelta, delta[seq_i]);
         maxDelta = std::max(maxDelta, delta[seq_i]);
     }
 
-    // 通过阈值选取 rho与delta都大的点作为聚类中心
-    double rho_threshold = (minRho + maxRho) / 5;
-    double delta_threshold = (minDelta + maxDelta) / 5;
+    // // 通过阈值选取 rho与delta都大的点作为聚类中心
+    // // 将所有rho和delta值收集到向量中以便排序
+    // std::vector<double> rhoValues;
+    // std::vector<double> deltaValues;
+    
+    // for (const auto& item : rho) {
+    //     rhoValues.push_back(item.second);
+    // }
+    
+    // for (const auto& item : delta) {
+    //     deltaValues.push_back(item.second);
+    // }
+    
+    // // 对rho和delta值进行排序（降序）
+    // std::sort(rhoValues.begin(), rhoValues.end(), std::greater<double>());
+    // std::sort(deltaValues.begin(), deltaValues.end(), std::greater<double>());
+    
+    // // 计算20%的位置索引
+    // size_t rhoPercentileIndex = std::max(size_t(1), size_t(rhoValues.size() * 0.2));
+    // size_t deltaPercentileIndex = std::max(size_t(1), size_t(deltaValues.size() * 0.2));
+    
+    // // 获取阈值（位于20%处的值）
+    // double rho_threshold1 = rhoValues.size() > 0 ? rhoValues[rhoPercentileIndex - 1] : 0;
+    // double delta_threshold1 = deltaValues.size() > 0 ? deltaValues[deltaPercentileIndex - 1] : 0;
 
-    NFD_LOG_INFO("rho_threshold= "<<rho_threshold<<" delta_threshold= "<<delta_threshold);
+    // NFD_LOG_INFO("rho_threshold1= " << rho_threshold1 << " delta_threshold1= " << delta_threshold1 
+    //              << " (top 20% values)");
+    
+    // // 绘制rho-delta图
+    // std::vector<double> x, y;
+    // std::vector<std::string> labelTexts; // 修改变量名，避免与后面的labels冲突
+    // std::vector<std::string> colors;
+    
+    // for (const auto& item : data) {
+    //     uint64_t seq = std::get<0>(item);
+    //     double rhoVal = rho[seq];
+    //     double deltaVal = delta[seq];
+        
+    //     x.push_back(rhoVal);
+    //     y.push_back(deltaVal);
+    //     labelTexts.push_back(std::to_string(seq)); // 使用修改后的变量名
+        
+    //     // 如果点的rho和delta都大于阈值，则标记为红色（可能的聚类中心）
+    //     if (rhoVal > rho_threshold1 && deltaVal > delta_threshold1) {
+    //         colors.push_back("red");
+    //     } else {
+    //         colors.push_back("blue");
+    //     }
+    // }
+    
+    // // 绘制散点图
+    // plt::figure_size(1200, 800);
+    // plt::clf();
+    
+    // for (size_t i = 0; i < x.size(); ++i) {
+    //     plt::scatter(std::vector<double>{x[i]}, std::vector<double>{y[i]}, 50.0, 
+    //                 {{"color", colors[i]}, {"marker", "o"}});
+    //     plt::text(x[i], y[i], labelTexts[i]); // 移除不支持的额外参数
+    // }
+    
+    // // 绘制水平和垂直的阈值线
+    // std::vector<double> xline = {minRho, maxRho};
+    // std::vector<double> yline_delta(2, delta_threshold1);
+    // plt::plot(xline, yline_delta, "g--");
+    
+    // std::vector<double> yline = {minDelta, maxDelta};
+    // std::vector<double> xline_rho(2, rho_threshold1);
+    // plt::plot(xline_rho, yline, "g--");
+    
+    // // 添加标签和标题
+    // plt::xlabel("rho (density)");
+    // plt::ylabel("delta (distance)");
+    // plt::title("Decision Graph for Density Peak Clustering");
+    
+    // // 保存图像
+    // std::string imagePath = "/tmp/decision_graph_node" + std::to_string(ptr->mynodeid) + 
+    //                        "_period" + std::to_string(ptr->wdCount) + ".png";
+    // plt::save(imagePath);
+    // NFD_LOG_INFO("决策图已保存为: " << imagePath);
+    
+
+
+    //根据rho和delta的分布，只对delta限制即可
+    double rho_threshold = 0.0;
+    double delta_threshold = maxDelta *0.5;
+
     std::vector<uint64_t> centers;
     for (const auto& item : data) {
         uint64_t seq = std::get<0>(item);
-        if (rho[seq] * delta[seq] > rho_threshold * delta_threshold) {
-            NFD_LOG_INFO("seq= "<<seq<<" rho= "<<rho[seq]<<" delta= "<<delta[seq]);
-            //if(rho[seq] > rho_threshold  && delta[seq] > delta_threshold){
-                centers.push_back(seq);
-                NFD_LOG_INFO("center= "<<seq);
-            //}
+        if (rho[seq] > rho_threshold && delta[seq] > delta_threshold) {
+            NFD_LOG_INFO("seq= " << seq << " rho= " << rho[seq] << " delta= " << delta[seq]);
+            centers.push_back(seq);
+            NFD_LOG_INFO("center= " << seq);
         }
     }
 
-    // 聚类标记
+    // 聚类标记 (保持原有变量名不变)
     std::map<uint64_t, int> labels;
     for (size_t i = 0; i < centers.size(); ++i) {
         labels[centers[i]] = i;
@@ -309,9 +392,7 @@ void detectWDCallback(Forwarder *ptr)
     for (const auto& cluster : clusters) {
         double avgRatio = 0.0;
         for (const auto& seq : cluster.second) {
-            avgRatio += std::get<2>(*std::find_if(data.begin(), data.end(), [&](const auto& d) {
-                return std::get<0>(d) == seq;
-            }));
+            avgRatio += ratioOfInterest[seq];
         }
         avgRatio /= cluster.second.size();
         if (avgRatio > maxAvgRatio) {
@@ -320,9 +401,10 @@ void detectWDCallback(Forwarder *ptr)
         }
     }
     popularSeqs = clusters[popularCluster];
-    NFD_LOG_INFO("popularCluster= "<<popularCluster);
-    NFD_LOG_INFO("tau= "<<popularSeqs.size());
-    //求unpopularSeqs
+    NFD_LOG_INFO("popularCluster= " << popularCluster);
+    NFD_LOG_INFO("tau= " << popularSeqs.size());
+    
+    // 求unpopularSeqs
     for (const auto& cluster : clusters) {
         if (cluster.first != popularCluster) {
             unpopularSeqs.insert(unpopularSeqs.end(), cluster.second.begin(), cluster.second.end());
@@ -330,41 +412,52 @@ void detectWDCallback(Forwarder *ptr)
     }
 
     // 判断攻击
+    double tau = popularSeqs.size();
+    double prevTau = ptr->prevPopularSeqs.size();
+    NFD_LOG_INFO("tau= "<<tau<<" prevTau= "<<prevTau);
+    double curOmega = double(tau - prevTau) / double(prevTau);
+    NFD_LOG_INFO("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*4);
     if (!ptr->prevClusters.empty()) {
-        if (clusters.size() == 1) {
+      //数据种类过度增多，也认为是LDA
+        if (clusters.size() == 1  || n > ptr->preDataSize * 2) {
             NFD_LOG_INFO("LDA detetct");
-            for (const auto& seq : ptr->preunPopularSeqs) {
-                ptr->malicious.insert(seq);
-                NFD_LOG_INFO("detetct seq="<<seq<<" is malicious");
-            }
-        } else {
-            double tau = popularSeqs.size();
-            double prevTau = ptr->prevPopularSeqs.size();
-            NFD_LOG_INFO("tau= "<<tau<<" prevTau= "<<prevTau);
-            double curOmega = double(tau - prevTau) / double(prevTau);
-            NFD_LOG_INFO("curOmega= "<<curOmega<<"avgOmega= "<<ptr->avgOmega<<"xi= "<<ptr->avgOmega*4);
-            if (curOmega > ptr->avgOmega*4) {
-                NFD_LOG_INFO("FLA detetct");
-                for (const auto& seq : popularSeqs) {
-                  //修改成只有不在历史流行聚类中的才是恶意，而不是上个周期的流行聚类
-                    if (std::find(ptr->historyAllPopularSeqs.begin(), ptr->historyAllPopularSeqs.end(), seq) == ptr->historyAllPopularSeqs.end()) {
-                        ptr->malicious.insert(seq);
-                        NFD_LOG_INFO("detect seq="<<seq<<" is malicious");
-                    }
+            for (const auto& seq : popularSeqs) {
+              //修改成只有不在历史流行聚类中的才是恶意，而不是上个周期的流行聚类
+                if (std::find(ptr->historyAllPopularSeqs.begin(), ptr->historyAllPopularSeqs.end(), seq) == ptr->historyAllPopularSeqs.end()) {
+                    ptr->malicious.insert(seq);
+                    NFD_LOG_INFO("detect seq="<<seq<<" is malicious");
                 }
             }
-            else{
-              //没有攻击才更新avgOmega
-                ptr->avgOmega = (ptr->avgOmega * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
+        } 
+        else if (curOmega > ptr->avgOmega*4) {
+            NFD_LOG_INFO("FLA detetct");
+            for (const auto& seq : popularSeqs) {
+              //修改成只有不在历史流行聚类中的才是恶意，而不是上个周期的流行聚类
+                if (std::find(ptr->historyAllPopularSeqs.begin(), ptr->historyAllPopularSeqs.end(), seq) == ptr->historyAllPopularSeqs.end()) {
+                    ptr->malicious.insert(seq);
+                    NFD_LOG_INFO("detect seq="<<seq<<" is malicious");
+                }
             }
-            NFD_LOG_INFO("nextAvgOmega= "<<ptr->avgOmega);
         }
+        else{
+          //没有攻击才更新avgOmega
+            ptr->avgOmega = (ptr->avgOmega * (ptr->wdCount-1) + std::abs(curOmega)) / double(ptr->wdCount);
+            ptr->prevClusters = clusters;
+            ptr->prevPopularSeqs = popularSeqs;
+            ptr->preunPopularSeqs = unpopularSeqs;
+            ptr->historyAllPopularSeqs.insert(ptr->historyAllPopularSeqs.end(), popularSeqs.begin(), popularSeqs.end());
+        }
+        NFD_LOG_INFO("nextAvgOmega= "<<ptr->avgOmega);
+    }
+    else{
+        ptr->prevClusters = clusters;
+        ptr->prevPopularSeqs = popularSeqs;
+        ptr->preunPopularSeqs = unpopularSeqs;
+        ptr->historyAllPopularSeqs.insert(ptr->historyAllPopularSeqs.end(), popularSeqs.begin(), popularSeqs.end());
+
     }
 
-    ptr->prevClusters = clusters;
-    ptr->prevPopularSeqs = popularSeqs;
-    ptr->preunPopularSeqs = unpopularSeqs;
-    ptr->historyAllPopularSeqs.insert(ptr->historyAllPopularSeqs.end(), popularSeqs.begin(), popularSeqs.end());
+    ptr->preDataSize = n;
 
     //重置
     ptr->numOfInterest.clear();
@@ -467,6 +560,10 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
         //NFD_LOG_DEBUG("normal user interest received");
         numOfReceivedNormalUserInterest++;
       }
+      else{
+        NFD_LOG_DEBUG("malicious user interest received");
+        numofMaliciousInterest++;
+      }
       if(middleBits == 1){
         //NFD_LOG_DEBUG("is edge node");
         isEdgeNode = true;
@@ -498,10 +595,6 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           numOfInterest[seq]++;
       }
       numofAllInterest++;
-      if(seq > seqofMaliciousInterest)
-      {
-          numofMaliciousInterest++;
-      }
 
       //统计相同seq之间的时间间隔到intervalSeriesOfInterest
       if(intervalSeriesOfInterest.find(seq) == intervalSeriesOfInterest.end())
@@ -1122,12 +1215,54 @@ Forwarder::processConfig(const ConfigSection& configSection, bool isDryRun, cons
 
 void computeForwarderMetricsWDCallback(Forwarder *ptr)
 {
+  if(ptr->mynodeid==0){
+    //producer节点
+    NFD_LOG_INFO("is producer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
+    return;
+  }
   if(ptr->isConsumerNode){
     //消费者节点
+    NFD_LOG_INFO("is consumer node");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+    
+    //如果不Ping直接return，会导致下一次不会再调用这个函数
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
   if(ptr->numofAllInterest == 0){
     //未启动节点（还没有发起攻击的攻击者）
+    NFD_LOG_INFO("node not start");
+    //清空数据
+    ptr->numofAllInterest = 0;
+    ptr->numofMaliciousInterest = 0;
+    ptr->numOfHitNormalUserInterest = 0;
+    ptr->numOfReceivedNormalUserInterest = 0;
+    ptr->numOfNotCacheOfUnpopularData = 0;
+    ptr->numOfUnpopularData = 0;
+    ptr->numOfNotCacheOfPopularData = 0;
+    ptr->numOfPopularData = 0;
+  
+    ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
     return;
   }
 

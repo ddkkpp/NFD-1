@@ -196,6 +196,7 @@ public:
   std::vector<uint64_t> historyAllPopularSeqs;
   int totalInterest=0;//总请求数量
   double avgOmega = 0.2 / 4;//论文中参数是0.8/5.2
+  int preDataSize = 0;
   std::unordered_set<uint64_t> malicious;//恶意
 
 
