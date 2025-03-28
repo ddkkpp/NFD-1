@@ -213,7 +213,7 @@ tTest(double mean1, double mean2, double var1, double var2,
 
 void 
 performTests(std::map<int, std::vector<FaceId>>& data, 
-            const std::map<FaceId, std::vector<int64_t>>& lastIntervalSeriesOfFace, 
+            std::map<FaceId, std::vector<int64_t>>& lastIntervalSeriesOfFace, 
             double alpha, std::set<FaceId>& finalSuspect1);
 
 void 
@@ -278,7 +278,7 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::set<FaceId> finalSuspect1;//基于用户请求间相似性识别得到的可疑用户
   std::set<FaceId> finalSuspect2;//基于用户单位速率所请求的有效范围的异常检测得到的可疑用户
   std::set<FaceId> finalSuspect;//合并finalSuspect1和finalSuspect2
-  double popularRateLimit = 0.1;//流行度阈值(在默认设置下，正常用户的该值为0.4～0.5)
+  double popularRateLimit = 0.25;//流行度阈值(在默认设置下，正常用户的该值为0.4～0.5)
   std::set<FaceId> Malicious;//恶意
   bool isNextPeriodOfAttack = false;//是否是攻击后的下一个周期
   bool isEndOfPeriodOfDetectAttack = false;//是否是检测到攻击的周期的结束时刻
@@ -320,6 +320,13 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::map<FaceId, int> increasesAboveMaxCount;
   std::map<FaceId, int> historyMax;
   std::map<FaceId, int> numOfSmallPreiod;//经历的小周期数
+
+  // 新增用于存储未成功聚类的content序列
+  std::map<FaceId, std::vector<uint64_t>> storedContentSeriesOfFace; // 存储未聚类成功的content序列
+  std::map<FaceId, std::vector<int64_t>> storedIntevalSeriesOfFace; // 存储未聚类成功的content序列
+  std::set<FaceId> faceIdsPendingClustering; // 等待聚类的faceId集合
+  const size_t MIN_CONTENT_LENGTH = 400; // 聚类所需的最小内容序列长度
+  bool detectDelay = false;//LSH本周期因为内容数量不够而没能把攻击者聚类出来，下周期聚类出来后要用上上个周期的流行度来判断恶意
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
