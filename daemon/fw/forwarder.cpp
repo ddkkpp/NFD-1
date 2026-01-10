@@ -41,6 +41,12 @@
 #include <boost/math/distributions/students_t.hpp>
 #include <cmath>
 #include <json/json.h>
+#include <numeric> 
+#include <set>
+// #include <tdigest/tdigest.hpp> // 保留：若你后续集成第三方C++ tdigest库可再启用；当前改为内置最小实现
+#include <limits>
+#include <vector>
+#include <algorithm>
 
 #include "face/null-face.hpp"
 
@@ -49,6 +55,124 @@ namespace nfd {
 NFD_LOG_INIT(Forwarder);
 
 const std::string CFG_FORWARDER = "forwarder";
+
+namespace {
+// 最小 t-digest（仅支持 update + quantile(0.5) 所需功能）
+// 目标：避免外部依赖；用于 Brown-Forsythe Levene 的“中位数估计”
+// 说明：这不是完整工业级 tdigest，但能提供稳定的近似中位数；compression 越大，centroid 上限越高。
+class SimpleTDigest
+{
+public:
+  explicit SimpleTDigest(double compression)
+    : m_compression(std::max(1.0, compression))
+  {
+  }
+
+  void
+  update(double x)
+  {
+    // 插入一个点：找到最近 centroid 并尝试合并，否则新建
+    if (m_centroids.empty()) {
+      m_centroids.push_back({x, 1.0});
+      m_totalWeight = 1.0;
+      return;
+    }
+
+    // 线性找最近 centroid（centroid数量是O(compression)的小常数，可接受）
+    size_t best = 0;
+    double bestDist = std::abs(m_centroids[0].mean - x);
+    for (size_t i = 1; i < m_centroids.size(); ++i) {
+      double d = std::abs(m_centroids[i].mean - x);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+
+    // 合并到最近 centroid
+    auto& c = m_centroids[best];
+    const double newW = c.weight + 1.0;
+    c.mean = (c.mean * c.weight + x) / newW;
+    c.weight = newW;
+    m_totalWeight += 1.0;
+
+    // 控制 centroid 数量（简化版压缩：超过上限就全局 merge 相邻）
+    const size_t maxCentroids = static_cast<size_t>(std::ceil(4.0 * m_compression));
+    if (m_centroids.size() > maxCentroids) {
+      compress();
+    }
+  }
+
+  // q in [0,1]，这里只主要用 q=0.5
+  double
+  quantile(double q)
+  {
+    if (m_centroids.empty()) {
+      return 0.0;
+    }
+    q = std::min(1.0, std::max(0.0, q));
+
+    // 按 mean 排序
+    std::sort(m_centroids.begin(), m_centroids.end(),
+              [](const Centroid& a, const Centroid& b) { return a.mean < b.mean; });
+
+    const double target = q * m_totalWeight;
+    double cum = 0.0;
+    for (const auto& c : m_centroids) {
+      cum += c.weight;
+      if (cum >= target) {
+        return c.mean;
+      }
+    }
+    return m_centroids.back().mean;
+  }
+
+private:
+  struct Centroid {
+    double mean;
+    double weight;
+  };
+
+  void
+  compress()
+  {
+    if (m_centroids.size() < 2) {
+      return;
+    }
+    std::sort(m_centroids.begin(), m_centroids.end(),
+              [](const Centroid& a, const Centroid& b) { return a.mean < b.mean; });
+
+    // 简化：把相邻 centroid 两两合并，直到数量回落
+    std::vector<Centroid> merged;
+    merged.reserve((m_centroids.size() + 1) / 2);
+
+    for (size_t i = 0; i < m_centroids.size(); ) {
+      if (i + 1 == m_centroids.size()) {
+        merged.push_back(m_centroids[i]);
+        break;
+      }
+      const auto& a = m_centroids[i];
+      const auto& b = m_centroids[i + 1];
+      const double w = a.weight + b.weight;
+      const double m = (a.mean * a.weight + b.mean * b.weight) / w;
+      merged.push_back({m, w});
+      i += 2;
+    }
+
+    m_centroids.swap(merged);
+  }
+
+private:
+  double m_compression;
+  double m_totalWeight = 0.0;
+  std::vector<Centroid> m_centroids;
+};
+
+// 统一设置：t-digest-like（SimpleTDigest）用于中位数估计的“压缩/精度”参数
+// 越大：centroid上限越高，近似分位数更准但更慢/更占内存
+static constexpr double TDIGEST_COMPRESSION_DEFAULT = 100.0;
+
+} // anonymous namespace
 
 // 新增的小周期Watchdog回调函数
 void countInterestWDCallback(Forwarder *ptr)
@@ -102,28 +226,70 @@ void detectWDCallback(Forwarder *ptr)
     {
         // 计算每个端口在过去1s内兴趣包数量相比历史最大值增加的次数
         ptr->increasesAboveMaxCount.clear();
+        ptr->factorM.clear();
         for (const auto& entry : ptr->interestCountPerPeriod) {
             FaceId faceId = entry.first;
             NFD_LOG_INFO("Face ID: " << faceId);
             const auto& counts = entry.second;
+            //打印counts向量的各项和
+            NFD_LOG_INFO("counts sum"<< std::accumulate(counts.begin(), counts.end(), 0));
+
             
             if (counts.empty()) {
                 continue;
             }
             
-            int increasesCount = 0;
+            int increasesCountHist = 0;//相比历史最大值增加的次数
+            int increasesCountCons = 0;//相比前一个小周期增加的次数
+            int decreaseCountCons = 0;//相比前一个小周期减少的次数
+            int lastRate = counts[0];
+            int avgIncreaseConsMagnitude = 0;
+            int avgDecreaseConsMagnitude = 0;
 
             for (size_t i = 0; i < counts.size(); i++) {
                 NFD_LOG_INFO("counts[" << i << "]: " << counts[i]);
                 if (counts[i] > ptr->historyMax[faceId]) {
-                    increasesCount++;
+                  increasesCountHist++;
                     ptr->historyMax[faceId] = counts[i];
                 }
+                if (i > 0) {
+                    if (counts[i] > lastRate) {
+                        increasesCountCons++;
+                        avgIncreaseConsMagnitude += (counts[i] - lastRate);
+                    } else if (counts[i] < lastRate) {
+                        decreaseCountCons++;
+                        avgDecreaseConsMagnitude += (lastRate - counts[i]);
+                    }
+                }
+                lastRate = counts[i];
             }
-            
-            ptr->increasesAboveMaxCount[faceId] = increasesCount; 
+            if (increasesCountCons > 0) {
+                avgIncreaseConsMagnitude /= increasesCountCons;
+            }
+            if (decreaseCountCons > 0) {
+                avgDecreaseConsMagnitude /= decreaseCountCons;
+            }
+            NFD_LOG_INFO("increasesCountCons: " << increasesCountCons);
+            NFD_LOG_INFO("decreaseCountCons: " << decreaseCountCons);
+            NFD_LOG_INFO("avgIncreaseConsMagnitude: " << avgIncreaseConsMagnitude);
+            NFD_LOG_INFO("avgDecreaseConsMagnitude: " << avgDecreaseConsMagnitude);
+            double changeRate = 0;
+            if (avgDecreaseConsMagnitude > 0) {
+                changeRate = double(avgIncreaseConsMagnitude) / double(avgDecreaseConsMagnitude);
+            }
+            else if(avgIncreaseConsMagnitude > 0)
+            {
+                changeRate = counts.size();
+            }
+            else{
+                changeRate = 1.0;
+            }
+            ptr->factorM[faceId] = changeRate;
+            //ptr->factorM[faceId] = std::min(changeRate, 2.0*counts.size());
+
+            ptr->increasesAboveMaxCount[faceId] = increasesCountHist; 
             ptr->numOfSmallPreiod[faceId] = counts.size();
-            NFD_LOG_INFO("Face " << faceId << " increases above max: " << increasesCount<<" numOfSmallPreiod: "<<ptr->numOfSmallPreiod[faceId]);
+            NFD_LOG_INFO("Face " << faceId << " increases above max: " << increasesCountHist<<" numOfSmallPreiod: "<<ptr->numOfSmallPreiod[faceId]);
         }
         
         // 清空当前统计周期的数据，准备下一个1s的统计
@@ -172,6 +338,7 @@ void detectWDCallback(Forwarder *ptr)
             {
                 FaceId faceId = entry.first;
                 NFD_LOG_INFO("faceid: " << faceId);
+                NFD_LOG_INFO("lastIntervalSeriesOfFace size"<<entry.second.size());
                 FaceId firstFaceInNearRange = ptr->theFirstFaceInNearRangeOfFace[faceId];
                 NFD_LOG_INFO("firstFaceInNearRange: " << firstFaceInNearRange);
                 NFD_LOG_INFO("firstInterestTimeInCurWndOfFace[firstFaceInNearRange]: " << ptr->firstInterestTimeInCurWndOfFace[firstFaceInNearRange]);
@@ -297,11 +464,12 @@ void detectWDCallback(Forwarder *ptr)
             {
                 NFD_LOG_INFO("Face ID: " << entry.first);
                 std::ostringstream oss;
+                NFD_LOG_INFO("lastIntervalSeriesOfFace size"<<entry.second.size());
                 for (const int64_t& interval : entry.second) 
                 {
                     oss << interval << " ";
                 }
-                NFD_LOG_INFO("  " << oss.str());
+                NFD_LOG_INFO(oss.str());
             }
             //重新打印lastContentSeriesOfFace
             NFD_LOG_INFO("lastContentSeriesOfFace: ");
@@ -313,7 +481,7 @@ void detectWDCallback(Forwarder *ptr)
                 {
                     oss << content << " ";
                 }
-                NFD_LOG_INFO("  " << oss.str());
+                NFD_LOG_INFO(oss.str());
             }
 
             //准备SimpleClustering聚类的数据
@@ -639,6 +807,16 @@ void detectWDCallback(Forwarder *ptr)
     ptr->lastLastSequenceMap = ptr->lastSequenceMap;
     ptr->lastSequenceMap = ptr->curSequenceMap;
     ptr->curSequenceMap.clear();
+
+    // -----------------------
+    // rolling: all-time TOP-K snapshots（新增）
+    // allTimeSequenceMap 本身不清空（持续累计），但是需要保存 “截至上周期末/上上周期末” 的快照用于缓存决策
+    // -----------------------
+    ptr->lastLastAllTimeSequenceMap = ptr->lastAllTimeSequenceMap;
+    ptr->lastAllTimeSequenceMap = ptr->allTimeSequenceMap;
+
+    // 删除：不再主动销毁 lastLastAllTimeSequenceMap（避免下一周期需要时为空）
+
     ptr->detectWD.Ping(ptr->detectWatchdogPeriod);
 }
 
@@ -895,12 +1073,145 @@ Forwarder::fTest(double var1, double var2, size_t size1, size_t size2, double al
     // 使用 boost 库计算临界值
     boost::math::fisher_f_distribution<double> f_dist(size1 - 1, size2 - 1);
     double lowerCriticalValue = boost::math::quantile(f_dist, alpha / 2);
+
+    // 修复：upperCriticalValue 应该是上分位点，而不是 complement 对象
+    // double upperCriticalValue = boost::math::complement(f_dist, alpha / 2); // 旧错误写法（保留说明，不删除）
     double upperCriticalValue = boost::math::quantile(boost::math::complement(f_dist, alpha / 2));
 
     NFD_LOG_INFO("F-test lower critical value: " << lowerCriticalValue);
     NFD_LOG_INFO("F-test upper critical value: " << upperCriticalValue);
 
     return f > lowerCriticalValue && f < upperCriticalValue;
+}
+
+// 新增：O(n) Brown-Forsythe Levene Test（t-digest中位数估计 + ANOVA F）
+bool
+Forwarder::oNLeveneTestTdigest(const std::vector<int64_t>& g1,
+                               const std::vector<int64_t>& g2,
+                               double alpha,
+                               double compression)
+{
+    // 兼容极端情况：样本太少时直接“认为方差齐”(不拒绝)
+    if (g1.size() < 2 || g2.size() < 2) {
+        NFD_LOG_INFO("Levene(t-digest): sample too small, treat as equal variances");
+        return true;
+    }
+
+    // -------------------------------
+    // Step 1: build t-digest summary
+    // -------------------------------
+    // 这里假设 SimpleTDigest 存在，且支持 update(double)/quantile(q in [0,1])
+    // 若你的TDigest API不同，请做等价适配
+    SimpleTDigest td1(static_cast<float>(compression));
+    SimpleTDigest td2(static_cast<float>(compression));
+
+    for (auto v : g1) td1.update(static_cast<double>(v));
+    for (auto v : g2) td2.update(static_cast<double>(v));
+
+    // -------------------------------
+    // Step 2: estimate medians
+    // -------------------------------
+    const double med1 = td1.quantile(0.5);
+    const double med2 = td2.quantile(0.5);
+
+    // -------------------------------
+    // Self-check: compare against exact median (sorting / nth_element)
+    // 仅用于验证 SimpleTDigest 的近似中位数是否“足够接近”
+    // -------------------------------
+    if (this->enableTdigestSelfCheck) {
+        auto exactMedian = [](const std::vector<int64_t>& g) -> double {
+            // 用 nth_element 做 O(n) 期望的精确中位数（避免全排序）
+            std::vector<int64_t> tmp = g;
+            const size_t n = tmp.size();
+            const size_t mid = n / 2;
+            std::nth_element(tmp.begin(), tmp.begin() + mid, tmp.end());
+            if (n % 2 == 1) {
+                return static_cast<double>(tmp[mid]);
+            }
+            // 偶数：还需要 lower mid
+            const int64_t highMid = tmp[mid];
+            std::nth_element(tmp.begin(), tmp.begin() + (mid - 1), tmp.begin() + mid);
+            const int64_t lowMid = tmp[mid - 1];
+            return (static_cast<double>(lowMid) + static_cast<double>(highMid)) / 2.0;
+        };
+
+        const double med1Exact = exactMedian(g1);
+        const double med2Exact = exactMedian(g2);
+
+        NFD_LOG_INFO("TDigest self-check (compression=" << compression << "): "
+                     << "med1 approx=" << med1 << " exact=" << med1Exact
+                     << " absErr=" << std::abs(med1 - med1Exact)
+                     << " | med2 approx=" << med2 << " exact=" << med2Exact
+                     << " absErr=" << std::abs(med2 - med2Exact));
+    }
+
+    // -------------------------------
+    // Step 3 & 4: abs deviations and means of Z (arithmetic mean)
+    // -------------------------------
+    const size_t n1 = g1.size();
+    const size_t n2 = g2.size();
+    const size_t N  = n1 + n2;
+    const int k = 2;
+
+    double sumZ1 = 0.0;
+    double sumZ2 = 0.0;
+
+    // 先算 sumZ，得到组均值与总均值
+    for (auto v : g1) sumZ1 += std::abs(static_cast<double>(v) - med1);
+    for (auto v : g2) sumZ2 += std::abs(static_cast<double>(v) - med2);
+
+    const double zBar1 = sumZ1 / static_cast<double>(n1);
+    const double zBar2 = sumZ2 / static_cast<double>(n2);
+    const double zBarAll = (sumZ1 + sumZ2) / static_cast<double>(N);
+
+    // -------------------------------
+    // Step 5: ANOVA F statistic
+    // -------------------------------
+    const double ssBetween =
+        static_cast<double>(n1) * (zBar1 - zBarAll) * (zBar1 - zBarAll) +
+        static_cast<double>(n2) * (zBar2 - zBarAll) * (zBar2 - zBarAll);
+
+    double ssWithin = 0.0;
+    for (auto v : g1) {
+        const double z = std::abs(static_cast<double>(v) - med1);
+        const double d = z - zBar1;
+        ssWithin += d * d;
+    }
+    for (auto v : g2) {
+        const double z = std::abs(static_cast<double>(v) - med2);
+        const double d = z - zBar2;
+        ssWithin += d * d;
+    }
+
+    const double dfBetween = static_cast<double>(k - 1);
+    const double dfWithin  = static_cast<double>(N - k);
+
+    // 防止除0
+    const double msBetween = (dfBetween <= 0.0) ? 0.0 : (ssBetween / dfBetween);
+    const double msWithin  = (dfWithin  <= 0.0) ? 0.0 : (ssWithin  / dfWithin);
+
+    double fStat = 0.0;
+    if (msWithin == 0.0) {
+        fStat = (msBetween == 0.0) ? 0.0 : std::numeric_limits<double>::infinity();
+    } else {
+        fStat = msBetween / msWithin;
+    }
+
+    // -------------------------------
+    // Step 6: p-value from F-distribution
+    // -------------------------------
+    boost::math::fisher_f_distribution<double> f_dist(dfBetween, dfWithin);
+    // p = 1 - CDF(F)
+    const double pValue = boost::math::cdf(boost::math::complement(f_dist, fStat));
+
+    NFD_LOG_INFO("Levene(t-digest) medians: " << med1 << ", " << med2
+                 << " zMeans: " << zBar1 << ", " << zBar2
+                 << " F: " << fStat
+                 << " p: " << pValue
+                 << " alpha: " << alpha);
+
+    // p > alpha => 不拒绝方差相等（方差齐性）
+    return pValue > alpha;
 }
 
 // t 检验
@@ -977,33 +1288,39 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
                 double var1 = meanVarianceCache[faceIds[i]].second;
                 double mean2 = meanVarianceCache[faceIds[j]].first;
                 double var2 = meanVarianceCache[faceIds[j]].second;
-                NFD_LOG_INFO("mean1: " << mean1 << " var1: " << var1);
-                NFD_LOG_INFO("mean2: " << mean2 << " var2: " << var2);
 
-                if (fTest(var1, var2, sample1.size(), sample2.size(), alpha)) {
+                // ---- 旧版：F-test（保留，不删除）----
+                // if (fTest(var1, var2, sample1.size(), sample2.size(), alpha)) {
+                //     if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
+                //         ...
+                //     }
+                // }
+                // ---- end old ----
+
+                // 新版：t-digest Brown-Forsythe Levene（对非正态更稳健）
+                // compression 建议 100；你也可以把它做成成员/参数
+                const double compression = TDIGEST_COMPRESSION_DEFAULT;
+                if (oNLeveneTestTdigest(sample1, sample2, alpha, compression)) {
                     if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " have equal means and variances.");
                         finalSuspect1.insert(faceIds[i]);
                         finalSuspect1.insert(faceIds[j]);
                         referenceFaceId = faceIds[i];
                         firstIndex = i;
                         secondIndex = j;
                         foundFirstPair = true;
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": First pair found - Face " << faceIds[i] << " and Face " << faceIds[j] << " have equal means and variances.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": First pair found - Face " << faceIds[i]
+                                     << " and Face " << faceIds[j] << " have equal means and (Levene) equal variances.");
                         break;
                     }
-                    else{
+                    else {
                         NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal means.");
                     }
                 }
-                else{
-                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal variances.");
+                else {
+                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have (Levene) equal variances.");
                 }
             }
-
-            if (foundFirstPair) {
-                break;
-            }
+            if (foundFirstPair) break;
         }
 
         if (foundFirstPair) {
@@ -1019,15 +1336,25 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
                 double mean2 = meanVarianceCache[faceIds[i]].first;
                 double var2 = meanVarianceCache[faceIds[i]].second;
 
-                if (fTest(var1, var2, sample1.size(), sample2.size(), alpha)) {
+                // ---- 旧版：F-test（保留，不删除）----
+                // if (fTest(var1, var2, sample1.size(), sample2.size(), alpha)) {
+                //   ...
+                // }
+                // ---- end old ----
+
+                const double compression = TDIGEST_COMPRESSION_DEFAULT;
+                if (oNLeveneTestTdigest(sample1, sample2, alpha, compression)) {
                     if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
                         finalSuspect1.insert(faceIds[i]);
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " have equal means and variances.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
+                                     << " and Face " << faceIds[i] << " have equal means and (Levene) equal variances.");
                     } else {
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " do not have equal means.");
+                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
+                                     << " and Face " << faceIds[i] << " do not have equal means.");
                     }
                 } else {
-                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId << " and Face " << faceIds[i] << " do not have equal variances.");
+                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
+                                 << " and Face " << faceIds[i] << " do not have (Levene) equal variances.");
                 }
             }
         }
@@ -1050,22 +1377,14 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
         double validRange = validRangeOfFace[faceId];
         double length = entry.second.size();
         
-        // 获取放大因子n
-        // int n = 0; // 默认为1
-        // if (increasesAboveMaxCount.find(faceId) != increasesAboveMaxCount.end()) {
-        //     n = increasesAboveMaxCount[faceId];
-        // }
-
         double n = 0;
         if (increasesAboveMaxCount.find(faceId) != increasesAboveMaxCount.end()) {
-            n = double(increasesAboveMaxCount[faceId]+1) / double(numOfSmallPreiod[faceId]);
+            n = double(increasesAboveMaxCount[faceId]) / double(numOfSmallPreiod[faceId]);
         }
-        // 使用n作为放大因子
-        //double feature = std::exp(length / validRange + n*10);
-        // double feature = std::exp(length / validRange * n);
-        double feature = std::sqrt(length) / validRange * (n+0.5);
+        double feature = std::sqrt(length) / validRange * (n+0.5) * (factorM[faceId]+5);
+
         NFD_LOG_INFO("Face " << faceId << " validRange: " << validRange 
-                    << " length: " << length << " n: " << n << " feature: " << feature);
+                    << " length: " << length << " original factorN: " << n << " original factorM: "<< factorM[faceId]<<" feature: " << feature);
         inputData[std::to_string(faceId)] = feature;
         sum_feature += feature;
         sum2_feature += feature * feature;
@@ -1104,46 +1423,89 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
     double q1 = featureList[featureList.size() / 4];
     double q3 = featureList[3 * featureList.size() / 4];
     double iqr = q3 - q1;
-    //double lowerBound = q1 - 1.5 * iqr;
-    double upperBound = q3 + 1.5 * iqr;
+
+    const double maxFeature = featureList.empty() ? 0.0 : featureList.back();
+
     NFD_LOG_INFO("q1: " << q1);
     NFD_LOG_INFO("q3: " << q3);
     NFD_LOG_INFO("iqr: " << iqr);
-    //NFD_LOG_INFO("lowerBound: " << lowerBound);
-    NFD_LOG_INFO("threshold_1iqr: " << q3 + iqr);
-    NFD_LOG_INFO("threshold_1.5iqr: " << q3 + 1.5 * iqr);
-    NFD_LOG_INFO("threshold_2iqr: " << q3 + 2 * iqr);
-    NFD_LOG_INFO("threshold_4iqr: " << q3 + 4 * iqr);
+    NFD_LOG_INFO("maxFeature(this period): " << maxFeature);
+
+    // 1) 先用“上一轮/当前保存的kIqrEwma”做当期检测（避免用当期数据先更新k再检测）
+    const double upperBound = (iqr > 0.0) ? (q3 + kIqrEwma * iqr)
+                                         : (q3); // iqr==0时退化为q3
+    NFD_LOG_INFO("kIqrEwma(before learn): " << kIqrEwma);
+    NFD_LOG_INFO("upperBound(q3 + kIqrEwma*iqr): " << upperBound);
+
     for (const auto& faceId : memberNames) {
         double feature = inputData[faceId].asDouble();
-        if (feature > q3 + iqr) {
-            NFD_LOG_INFO("1iqr find: Face " << faceId << " is suspect");
-        }
-        if (feature > q3 + 1.5 * iqr) {
-            NFD_LOG_INFO("1.5iqr find: Face " << faceId << " is suspect");
-        }
-        if (feature > q3 + 2 * iqr) {
-            NFD_LOG_INFO("2iqr find: Face " << faceId << " is suspect");
-        }
-        if (feature > q3 + 4 * iqr) {
-            NFD_LOG_INFO("4iqr find: Face " << faceId << " is suspect");
+        if (feature > upperBound) {
+            NFD_LOG_INFO("dynamic-iqr find: Face " << faceId << " is suspect");
             finalSuspect2.insert(std::stoi(faceId));
         }
     }
-    // //如果数据量太少，倍增到256以上：在原始数据附近增加数据,faceid设置为负数以区分
-    // //把inputData扩增到256，其中的feature设置为原来的（1+0.001*1）到（1+0.001*multiplyTimes）倍，faceid设置为随机负数
-    // if(inputData.size() < 256){
-    //     int multiplyTimes = 256 / inputData.size();
-    //     Json::Value tempData = inputData;
-    //     for (int i = 0; i < multiplyTimes; ++i) {
-    //         for (const auto& entry : tempData) {
-    //             double feature = entry.asDouble();
-    //             int randomNum = std::rand() % 10000;  // 生成0-9999之间的随机数
-    //             inputData[std::to_string(-randomNum)] = feature * (1 + 0.001 * (i+1));
-    //         }
+
+    // 2) 再判定本周期是否“无攻击者”（以检测结果为准）
+    const bool noSuspectThisPeriod = finalSuspect2.empty();
+
+    // 3) 如无攻击者，再用maxFeature反推kExact并EWMA更新k
+    if (noSuspectThisPeriod) {
+      if (iqr > 0.0) {
+        const double kExact = (maxFeature - q3) / iqr; // q3 + kExact*IQR == maxFeature
+        NFD_LOG_INFO("k_exact(from maxFeature,q3,iqr): " << kExact);
+
+        double kNew = (kIqrEwma <= 0.0) ? kExact
+                                        : (1.0 - kIqrEwmaAlpha) * kIqrEwma + kIqrEwmaAlpha * kExact;
+        kNew = std::max(kIqrMin, std::min(kIqrMax, kNew));
+        NFD_LOG_INFO("kIqrEwma updated (no-attack period): " << kIqrEwma << " -> " << kNew);
+        kIqrEwma = kNew;
+      }
+      else {
+        NFD_LOG_INFO("iqr==0, skip kIqrEwma update");
+      }
+    } else {
+      NFD_LOG_INFO("suspect exists in this period (after IQR), skip kIqrEwma learning");
+    }
+
+    // ---- 保留旧版（静态kIQR）逻辑，不删除（仅注释）----
+    // double upperBoundOld_1_5 = q3 + 1.5 * iqr;
+    // double upperBoundOld_2_0 = q3 + 2.0 * iqr;
+    // double upperBoundOld_4_0 = q3 + 4.0 * iqr;
+    // NFD_LOG_INFO("threshold_1iqr: " << q3 + iqr);
+    // NFD_LOG_INFO("threshold_1.5iqr: " << upperBoundOld_1_5);
+    // NFD_LOG_INFO("threshold_2iqr: " << upperBoundOld_2_0);
+    // NFD_LOG_INFO("threshold_4iqr: " << upperBoundOld_4_0);
+    // for (const auto& faceId : memberNames) {
+    //     double feature = inputData[faceId].asDouble();
+    //     if (feature > q3 + iqr) {
+    //         NFD_LOG_INFO("1iqr find: Face " << faceId << " is suspect");
+    //     }
+    //     if (feature > upperBoundOld_1_5) {
+    //         NFD_LOG_INFO("1.5iqr find: Face " << faceId << " is suspect");
+    //     }
+    //     if (feature > upperBoundOld_2_0) {
+    //         NFD_LOG_INFO("2iqr find: Face " << faceId << " is suspect");
+    //     }
+    //     if (feature > upperBoundOld_4iqr) {
+    //         NFD_LOG_INFO("4iqr find: Face " << faceId << " is suspect");
+    //         finalSuspect2.insert(std::stoi(faceId));
     //     }
     // }
-
+    // ---- end old logic ----
+    // }
+    // // //如果数据量太少，倍增到256以上：在原始数据附近增加数据,faceid设置为负数以区分
+    // // //把inputData扩增到256，其中的feature设置为原来的（1+0.001*1）到（1+0.001*multiplyTimes）倍，faceid设置为随机负数
+    // // if(inputData.size() < 256){
+    // //     int multiplyTimes = 256 / inputData.size();
+    // //     Json::Value tempData = inputData;
+    // //     for (int i = 0; i < multiplyTimes; ++i) {
+    // //         for (const auto& entry : tempData) {
+    // //             double feature = entry.asDouble();
+    // //             int randomNum = std::rand() % 10000;  // 生成0-9999之间的随机数
+    // //             inputData[std::to_string(-randomNum)] = feature * (1 + 0.001 * (i+1));
+    // //         }
+    // //     }
+    // // }
 
     // 使用节点ID和简单随机数生成唯一文件名
     int randomNum = std::rand() % 10000;  // 生成0-9999之间的随机数   
@@ -1268,6 +1630,9 @@ Forwarder::Forwarder(FaceTable& faceTable)
   curSequenceMap.reserve(sequenceMapCapacity);
   lastSequenceMap.reserve(sequenceMapCapacity);
   lastLastSequenceMap.reserve(sequenceMapCapacity);
+  allTimeSequenceMap.reserve(sequenceMapCapacity); // 新增
+  lastAllTimeSequenceMap.reserve(sequenceMapCapacity);     // 新增
+  lastLastAllTimeSequenceMap.reserve(sequenceMapCapacity); // 新增
 
   SetDetectWatchDog(ns3::MilliSeconds(1000));
   SetMetricsWatchDog(ns3::MilliSeconds(500));
@@ -1379,6 +1744,22 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
           curSequenceMap.erase(minIt);
         }
       }
+
+      // -----------------------
+      // 新增：有史以来 TOP-K（allTimeSequenceMap，space-saving）
+      // 说明：统计“累计流行度”TOP-K，不随周期清空
+      // -----------------------
+      if (allTimeSequenceMap.size() < sequenceMapCapacity || allTimeSequenceMap.find(seq) != allTimeSequenceMap.end()) {
+        allTimeSequenceMap[seq]++;
+      } else {
+        auto minItAll = std::min_element(allTimeSequenceMap.begin(), allTimeSequenceMap.end(),
+                                         [](const auto& a, const auto& b) { return a.second < b.second; });
+        if (minItAll != allTimeSequenceMap.end()) {
+          allTimeSequenceMap[seq] = minItAll->second + 1;
+          allTimeSequenceMap.erase(minItAll);
+        }
+      }
+
       NFD_LOG_DEBUG("seq= "<<seq);
       auto faceId = ingress.face.getId();
       NFD_LOG_DEBUG("faceId= "<<faceId);
@@ -1746,16 +2127,34 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
         numOfUnpopularData++;
       }
       if(!isNextPeriodOfAttack)
-      //如果不是攻击后的下一个周期，则在lastSequenceMap中查找
       {
-          NFD_LOG_DEBUG("is not next period of attack, use lastSequenceMap to cache");
-          if (lastSequenceMap.size() < sequenceMapCapacity || lastSequenceMap.find(seq) != lastSequenceMap.end()) {
-            // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
-            NFD_LOG_DEBUG("CS insert data: " << data.getName());
+          // recent: lastSequenceMap
+          // allTime: lastAllTimeSequenceMap（截至上周期末）
+          const bool hitRecentTopK = (lastSequenceMap.size() < sequenceMapCapacity) ||
+                                     (lastSequenceMap.find(seq) != lastSequenceMap.end());
+          const bool hitAllTimeTopK = (lastAllTimeSequenceMap.size() < sequenceMapCapacity) ||
+                                      (lastAllTimeSequenceMap.find(seq) != lastAllTimeSequenceMap.end());
+
+          // 修正：都命中就缓存
+          const bool shouldCache = hitRecentTopK && hitAllTimeTopK;
+
+          const char* recentMapName = "lastSequenceMap";
+          const char* allTimeMapName = "lastAllTimeSequenceMap";
+
+          if (shouldCache) {
+            NFD_LOG_DEBUG("CS insert data: " << data.getName()
+                          << " (hit " << (hitRecentTopK ? recentMapName : "")
+                          << (hitRecentTopK && hitAllTimeTopK ? " + " : "")
+                          << (hitAllTimeTopK ? allTimeMapName : "")
+                          << ", hitRecentTopK=" << hitRecentTopK
+                          << ", hitAllTimeTopK=" << hitAllTimeTopK << ")");
             m_cs.insert(data);
           }
           else{
-          //统计流行内容和非流行内容不缓存数目
+            NFD_LOG_DEBUG("CS skip data: " << data.getName()
+                          << " (hitRecentTopK=" << hitRecentTopK
+                          << ", hitAllTimeTopK=" << hitAllTimeTopK << ")");
+            // ...existing code...（计数逻辑不变）
             if(seq<=2000){
                 numOfNotCacheOfPopularData++;
               }
@@ -1764,16 +2163,33 @@ Forwarder::onIncomingData(const Data& data, const FaceEndpoint& ingress)
               }
           }
       }
-      //如果是攻击后的下一个周期，则在lastLastSequenceMap中查找
-      else{
-        NFD_LOG_DEBUG("is next period of attack, use lastLastSequenceMap to cache");
-        if (lastLastSequenceMap.size() < sequenceMapCapacity || lastLastSequenceMap.find(seq) != lastLastSequenceMap.end()) {
-          // 只有当unordered_map未满或者包含data的序列号时，才插入到CS中
-          NFD_LOG_DEBUG("CS insert data: " << data.getName());
+      else
+      {
+        // recent: lastLastSequenceMap
+        // allTime: lastLastAllTimeSequenceMap（截至上上周期末）
+        const bool hitRecentTopK = (lastLastSequenceMap.size() < sequenceMapCapacity) ||
+                                   (lastLastSequenceMap.find(seq) != lastLastSequenceMap.end());
+        const bool hitAllTimeTopK = (lastLastAllTimeSequenceMap.size() < sequenceMapCapacity) ||
+                                    (lastLastAllTimeSequenceMap.find(seq) != lastLastAllTimeSequenceMap.end());
+        const bool shouldCache = hitRecentTopK || hitAllTimeTopK;
+
+        const char* recentMapName = "lastLastSequenceMap";
+        const char* allTimeMapName = "lastLastAllTimeSequenceMap";
+
+        if (shouldCache) {
+          NFD_LOG_DEBUG("CS insert data: " << data.getName()
+                        << " (hit " << (hitRecentTopK ? recentMapName : "")
+                        << (hitRecentTopK && hitAllTimeTopK ? " + " : "")
+                        << (hitAllTimeTopK ? allTimeMapName : "")
+                        << ", hitRecentTopK=" << hitRecentTopK
+                        << ", hitAllTimeTopK=" << hitAllTimeTopK << ")");
           m_cs.insert(data);
         }
         else{
-        //统计流行内容和非流行内容不缓存数目
+          NFD_LOG_DEBUG("CS skip data: " << data.getName()
+                        << " (hitRecentTopK=" << hitRecentTopK
+                        << ", hitAllTimeTopK=" << hitAllTimeTopK << ")");
+          // ...existing code...（计数逻辑不变）
           if(seq<=2000){
               numOfNotCacheOfPopularData++;
             }
@@ -2194,11 +2610,11 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
   }
   //注意：这里的路径需要根据实际情况修改
-  std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-ours.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
-  if (outFile.is_open()) {
-    outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
-  }
-  outFile.close();
+  // std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-ours.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  // if (outFile.is_open()) {
+  //   outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  // }
+  // outFile.close();
 
   //清空数据
   ptr->numofAllInterest = 0;

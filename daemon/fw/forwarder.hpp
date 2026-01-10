@@ -207,6 +207,14 @@ calculateMean(const std::vector<int64_t>& data);
 bool 
 fTest(double var1, double var2, size_t size1, size_t size2, double alpha);
 
+// O(n) Brown-Forsythe Levene Test with t-digest median estimation (robust for non-normal)
+// 返回 true 表示“方差齐性(无法拒绝相等方差)”，false 表示“方差不齐”
+bool
+oNLeveneTestTdigest(const std::vector<int64_t>& g1,
+                    const std::vector<int64_t>& g2,
+                    double alpha,
+                    double compression);
+
 bool 
 tTest(double mean1, double mean2, double var1, double var2, 
       size_t size1, size_t size2, double alpha);
@@ -293,6 +301,12 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::unordered_map<uint64_t, int> curSequenceMap;
   std::unordered_map<uint64_t, int> lastSequenceMap;
   std::unordered_map<uint64_t, int> lastLastSequenceMap;
+  std::unordered_map<uint64_t, int> allTimeSequenceMap; // 累计到“当前时刻”的 all-time TOP-K（space-saving）
+
+  // 新增：滚动快照（仿照 last/lastLast）
+  std::unordered_map<uint64_t, int> lastAllTimeSequenceMap;     // 截至上周期末
+  std::unordered_map<uint64_t, int> lastLastAllTimeSequenceMap; // 截至上上周期末
+
   size_t sequenceMapCapacity = 200;
 
   int numOfReceivedNormalUserInterest = 0;//收到正常用户请求的数量
@@ -310,7 +324,7 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   // 新增的Watchdog和相关数据结构
   ns3::Watchdog interestCountWD;
   ns3::Time interestCountWatchdogPeriod = ns3::MilliSeconds(50);
-  int interestCountPerPeriodSize = 20; // 每个端口每小周期的兴趣包数量的存储大小
+  size_t interestCountPerPeriodSize = 20; // 每个端口每小周期的兴趣包数量的存储大小（用 size_t 避免符号比较告警）
   
   // 存储每个端口每小周期的兴趣包数量
   std::map<FaceId, std::vector<int>> interestCountPerPeriod;
@@ -320,6 +334,7 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::map<FaceId, int> increasesAboveMaxCount;
   std::map<FaceId, int> historyMax;
   std::map<FaceId, int> numOfSmallPreiod;//经历的小周期数
+  std::map<FaceId, double> factorM;
 
   // 新增用于存储未成功聚类的content序列
   std::map<FaceId, std::vector<uint64_t>> storedContentSeriesOfFace; // 存储未聚类成功的content序列
@@ -327,6 +342,20 @@ performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
   std::set<FaceId> faceIdsPendingClustering; // 等待聚类的faceId集合
   const size_t MIN_CONTENT_LENGTH = 400; // 聚类所需的最小内容序列长度
   bool detectDelay = false;//LSH本周期因为内容数量不够而没能把攻击者聚类出来，下周期聚类出来后要用上上个周期的流行度来判断恶意
+
+  // EWMA kIQR（用于替换静态 kIQR）
+  double kIqrEwma = 4.0;          // 初始等价于原来固定 4*IQR
+  double kIqrEwmaAlpha = 0.01;     // EWMA 平滑系数（0~1，越大越“跟随”当前周期）
+  double kIqrMin = 1.0;           // 下界，避免阈值过紧导致误报
+  double kIqrMax = 10.0;          // 上界，避免阈值过松导致漏报
+
+  // 仅在“确认无攻击周期”时，用当期max feature与(q1,q3)反推k_exact，作为正常期上界的历史参考
+  // 注意：该值仅用于观测/调试趋势，真正用于阈值的是 kIqrEwma（q3 + kIqrEwma*IQR）
+  // double normalMaxFeatureEwma = 0.0; // 删除：当前未使用
+
+  // SimpleTDigest 自检开关：开启后会在 Levene(t-digest) 里用“排序真中位数”对比近似中位数并输出误差
+  // 默认 false，避免引入 O(n log n) 的排序开销
+  bool enableTdigestSelfCheck = false;
 
 NFD_PUBLIC_WITH_TESTS_ELSE_PRIVATE: // pipelines
   /** \brief incoming Interest pipeline
