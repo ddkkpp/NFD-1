@@ -1764,14 +1764,38 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       auto faceId = ingress.face.getId();
       NFD_LOG_DEBUG("faceId= "<<faceId);
       nfd::face::Transport* mytransport = ingress.face.getTransport();
-      ns3::Ptr<ns3::Node> mynode =nullptr;
-      ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
-      ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
-      ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
-      ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
-      mynode = p2pNetDevice->GetNode();
-      mynodeid = mynode->GetId();
-      NFD_LOG_DEBUG("nodeid= "<<mynodeid);
+      ns3::Ptr<ns3::Node> mynode = nullptr;
+
+      // 修复：不再假设所有 Transport 都是 PointToPoint，且添加空指针校验
+      // 这里的 dynamic_cast 用于处理 NetDeviceTransport (WiFi/P2P 等)
+      auto ndnNetDeviceTransport = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport);
+      if (ndnNetDeviceTransport != nullptr) {
+          ns3::Ptr<ns3::NetDevice> mydevice = ndnNetDeviceTransport->GetNetDevice();
+          if (mydevice != nullptr) {
+              // 无论是 Wifi 还是 P2P，NetDevice 都有 GetNode
+              mynode = mydevice->GetNode();
+          }
+      }
+
+      /* 移除旧的导致崩溃的代码 (保留注释以供说明)
+      // ns3::Ptr<ns3::NetDevice> mydevice = dynamic_cast<ns3::ndn::NetDeviceTransport*>(mytransport)->GetNetDevice();
+      // ns3::Ptr<ns3::Channel> mychannel = mydevice->GetChannel();
+      // ns3::Ptr<ns3::PointToPointChannel> p2pChannel = mychannel->GetObject<ns3::PointToPointChannel>();
+      // ns3::Ptr<ns3::PointToPointNetDevice> p2pNetDevice = ns3::DynamicCast<ns3::PointToPointNetDevice>(p2pChannel->GetDevice(1));
+      // mynode = p2pNetDevice->GetNode();
+      */
+
+      // if (mynode != nullptr) {
+      //     mynodeid = mynode->GetId();
+      //     NFD_LOG_DEBUG("nodeid= "<<mynodeid);
+          
+      //     // 补救措施：如果 Tag 缺失导致无法识别边缘节点，通过 NodeID 辅助判断
+      //     // 在本场景中，Node 2, 3, 4 是连接消费者的边缘路由器
+      //     if (mynodeid >= 2 && mynodeid <= 4) {
+      //         isEdgeNode = true;
+      //     }
+      // }
+      
       if(isEdgeNode)
       {
         //第一个包
@@ -2568,65 +2592,69 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     return;
   }
 
-  double receivedMaliciousInterestRatio = 0;
-  NFD_LOG_INFO("numofAllInterest= "<<ptr->numofAllInterest);
-  NFD_LOG_INFO("numofMaliciousInterest= "<<ptr->numofMaliciousInterest);
-  if(ptr->numofAllInterest!=0){
-    receivedMaliciousInterestRatio = (double)ptr->numofMaliciousInterest / (double)ptr->numofAllInterest;
-    NFD_LOG_INFO("receivedMaliciousInterestRatio= "<<receivedMaliciousInterestRatio);
+
+  if(ptr->isEdgeNode){
+      NFD_LOG_INFO("nodeid= "<<ptr->mynodeid);
+      double receivedMaliciousInterestRatio = 0;
+      NFD_LOG_INFO("numofAllInterest= "<<ptr->numofAllInterest);
+      NFD_LOG_INFO("numofMaliciousInterest= "<<ptr->numofMaliciousInterest);
+      if(ptr->numofAllInterest!=0){
+        receivedMaliciousInterestRatio = (double)ptr->numofMaliciousInterest / (double)ptr->numofAllInterest;
+        NFD_LOG_INFO("receivedMaliciousInterestRatio= "<<receivedMaliciousInterestRatio);
+      }
+
+      double normalHitRatio = 0;
+      NFD_LOG_INFO("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
+      NFD_LOG_INFO("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
+      if(ptr->numOfReceivedNormalUserInterest!=0){
+        normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
+        NFD_LOG_INFO("normalHitRatio= "<<normalHitRatio);
+      }
+
+      double detectionRatio = 0;
+      NFD_LOG_INFO("numOfUnpopularData= "<<ptr->numOfUnpopularData);
+      NFD_LOG_INFO("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
+      if(ptr->numOfUnpopularData!=0){
+        detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
+        NFD_LOG_INFO("detectionRatio= "<<detectionRatio);
+      }
+
+      double falseAlarmRatio = 0;
+      NFD_LOG_INFO("numOfPopularData= "<<ptr->numOfPopularData);
+      NFD_LOG_INFO("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
+      if(ptr->numOfPopularData!=0){
+        falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
+        NFD_LOG_INFO("falseAlarmRatio= "<<falseAlarmRatio);
+      }
+
+      double cacheAccuracy = 0;
+      int numOfCacheOfPopularData = ptr->numOfPopularData - ptr->numOfNotCacheOfPopularData;
+      int numOfCacheOfUnpopularData = ptr->numOfUnpopularData - ptr->numOfNotCacheOfUnpopularData;
+      NFD_LOG_INFO("numOfCacheOfPopularData= "<<numOfCacheOfPopularData);
+      NFD_LOG_INFO("numOfCacheOfUnpopularData= "<<numOfCacheOfUnpopularData);
+      if(numOfCacheOfPopularData+numOfCacheOfUnpopularData!=0){
+        cacheAccuracy = (double)(numOfCacheOfPopularData) / (double)(numOfCacheOfPopularData+numOfCacheOfUnpopularData);
+        NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
+      }
+      //注意：这里的路径需要根据实际情况修改
+      // std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-ours.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+      // if (outFile.is_open()) {
+      //   outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+      // }
+      // outFile.close();
+
+      //清空数据
+      ptr->numofAllInterest = 0;
+      ptr->numofMaliciousInterest = 0;
+      ptr->numOfHitNormalUserInterest = 0;
+      ptr->numOfReceivedNormalUserInterest = 0;
+      ptr->numOfNotCacheOfUnpopularData = 0;
+      ptr->numOfUnpopularData = 0;
+      ptr->numOfNotCacheOfPopularData = 0;
+      ptr->numOfPopularData = 0;
+
+      ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
   }
-
-  double normalHitRatio = 0;
-  NFD_LOG_INFO("numOfReceivedNormalUserInterest= "<<ptr->numOfReceivedNormalUserInterest);
-  NFD_LOG_INFO("numOfHitNormalUserInterest= "<<ptr->numOfHitNormalUserInterest);
-  if(ptr->numOfReceivedNormalUserInterest!=0){
-    normalHitRatio = (double)ptr->numOfHitNormalUserInterest / (double)ptr->numOfReceivedNormalUserInterest;
-    NFD_LOG_INFO("normalHitRatio= "<<normalHitRatio);
-  }
-
-  double detectionRatio = 0;
-  NFD_LOG_INFO("numOfUnpopularData= "<<ptr->numOfUnpopularData);
-  NFD_LOG_INFO("numOfNotCacheOfUnpopularData= "<<ptr->numOfNotCacheOfUnpopularData);
-  if(ptr->numOfUnpopularData!=0){
-    detectionRatio = (double)ptr->numOfNotCacheOfUnpopularData / (double)ptr->numOfUnpopularData;
-    NFD_LOG_INFO("detectionRatio= "<<detectionRatio);
-  }
-
-  double falseAlarmRatio = 0;
-  NFD_LOG_INFO("numOfPopularData= "<<ptr->numOfPopularData);
-  NFD_LOG_INFO("numOfNotCacheOfPopularData= "<<ptr->numOfNotCacheOfPopularData);
-  if(ptr->numOfPopularData!=0){
-    falseAlarmRatio = (double)ptr->numOfNotCacheOfPopularData / (double)ptr->numOfPopularData;
-    NFD_LOG_INFO("falseAlarmRatio= "<<falseAlarmRatio);
-  }
-
-  double cacheAccuracy = 0;
-  int numOfCacheOfPopularData = ptr->numOfPopularData - ptr->numOfNotCacheOfPopularData;
-  int numOfCacheOfUnpopularData = ptr->numOfUnpopularData - ptr->numOfNotCacheOfUnpopularData;
-  NFD_LOG_INFO("numOfCacheOfPopularData= "<<numOfCacheOfPopularData);
-  NFD_LOG_INFO("numOfCacheOfUnpopularData= "<<numOfCacheOfUnpopularData);
-  if(numOfCacheOfPopularData+numOfCacheOfUnpopularData!=0){
-    cacheAccuracy = (double)(numOfCacheOfPopularData) / (double)(numOfCacheOfPopularData+numOfCacheOfUnpopularData);
-    NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
-  }
-  //注意：这里的路径需要根据实际情况修改
-  // std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-ours.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
-  // if (outFile.is_open()) {
-  //   outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
-  // }
-  // outFile.close();
-
-  //清空数据
-  ptr->numofAllInterest = 0;
-  ptr->numofMaliciousInterest = 0;
-  ptr->numOfHitNormalUserInterest = 0;
-  ptr->numOfReceivedNormalUserInterest = 0;
-  ptr->numOfNotCacheOfUnpopularData = 0;
-  ptr->numOfUnpopularData = 0;
-  ptr->numOfNotCacheOfPopularData = 0;
-  ptr->numOfPopularData = 0;
-
-  ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
 }
 
 void 
