@@ -502,7 +502,7 @@ void detectWDCallback(Forwarder *ptr)
             NFD_LOG_INFO("SimpleClustering start: ");
             size_t tau = data.size() / 5; // 10%的face数量作为密度阈值
             NFD_LOG_INFO("tau: " << tau);
-            size_t xi = 2; // 2为网格步长
+            size_t xi = 10; // 10为网格步长(之前设置为2，很多时候在这一步就聚类失败)
             std::map<int, std::vector<FaceId>> clusters = ptr->runSimpleClustering(data, xi, tau); 
 
             // SimpleClustering聚类结果
@@ -675,7 +675,7 @@ void detectWDCallback(Forwarder *ptr)
 
             //第二大部分，根据速率与有效范围的比值做孤立森林检测
             NFD_LOG_INFO("Isolation Forest start: ");
-            ptr->performIsolationForestDetection(ptr->finalSuspect2);
+            ptr->performAnomalyDetection(ptr->finalSuspect2);
             oss.str("");
             oss.clear();
             for (FaceId faceId : ptr->finalSuspect2) {
@@ -832,25 +832,46 @@ Forwarder::runSimpleClustering(const std::vector<std::pair<FaceId, size_t>>& dat
 
     std::map<int, std::vector<FaceId>> clusters;
     size_t clusterId = 0;
-    size_t currentClusterSize = 0;
+
+    std::vector<FaceId> currentCluster;
+    size_t lastValue = 0;
+
+    auto finalizeCluster = [&](std::vector<FaceId>& cluster) {
+      if (cluster.empty()) {
+        return;
+      }
+      if (cluster.size() >= tau) {
+        clusters[static_cast<int>(clusterId)] = cluster;
+        clusterId++;
+      }
+      // else: 小于 tau 的簇直接丢弃（不并入下一个簇），避免 tau>1 时错误“串簇”
+      cluster.clear();
+    };
 
     for (size_t i = 0; i < sortedData.size(); ++i) {
-        // 如果当前点与前一个点的距离大于xi，开始一个新的聚类
-        if (i == 0 || sortedData[i].second - sortedData[i - 1].second > xi) {
-            if (currentClusterSize >= tau) {
-                clusterId++;
-            }
-            currentClusterSize = 0;
-        }
-        clusters[clusterId].push_back(sortedData[i].first);
-        currentClusterSize++;
+      const FaceId faceId = sortedData[i].first;
+      const size_t value = sortedData[i].second;
+      NFD_LOG_INFO("Data Point: FaceId=" << faceId << ", Value=" << value);
+
+      if (i == 0) {
+        currentCluster.push_back(faceId);
+        lastValue = value;
+        continue;
+      }
+
+      // 如果当前点与前一个点的距离大于 xi，则结束上一个簇并开始新簇
+      if (value - lastValue > xi) {
+        finalizeCluster(currentCluster);
+        currentCluster.push_back(faceId);
+      }
+      else {
+        currentCluster.push_back(faceId);
+      }
+
+      lastValue = value;
     }
 
-    // 如果最后一个聚类的大小小于tau，则移除它
-    if (currentClusterSize < tau) {
-        clusters.erase(clusterId);
-    }
-
+    finalizeCluster(currentCluster);
     return clusters;
 }
 
@@ -1051,27 +1072,29 @@ Forwarder::calculateMean(const std::vector<int64_t>& data) {
 // F 检验
 bool 
 Forwarder::fTest(double var1, double var2, size_t size1, size_t size2, double alpha) {
-    NFD_LOG_INFO("size1: " << size1 << " size2: " << size2);
+  const double eps = 1e-7;
+  const double safeVar2 = (var2 == 0.0) ? eps : var2;
+  const double safeVar1 = (var1 == 0.0) ? 0.0 : var1;
+
+  // df for F distribution
+  const double df1 = (size1 > 0) ? static_cast<double>(size1 - 1) : 0.0;
+  const double df2 = (size2 > 0) ? static_cast<double>(size2 - 1) : 0.0;
+
+  NFD_LOG_INFO("F-test inputs: n1=" << size1 << " n2=" << size2
+         << " df1=" << df1 << " df2=" << df2
+         << " var1=" << safeVar1 << " var2=" << safeVar2
+         << " alpha=" << alpha);
     double f;
     //防止除数为零
-    if(var2==0)
-    {
-        if(var1==0)
-        {
-            return true;
-        }
-        else
-        {
-            f = var1 / 0.0000001;
-        }
-    }
-    else{
-        f = var1 / var2;
-    }
-    NFD_LOG_INFO("F-test value: " << f);
+  if (var2 == 0.0 && var1 == 0.0) {
+    NFD_LOG_INFO("F-test value: 0 (both variances are 0) => treat as equal variances");
+    return true;
+  }
+  f = safeVar1 / safeVar2;
+  NFD_LOG_INFO("F-test value: " << f);
 
     // 使用 boost 库计算临界值
-    boost::math::fisher_f_distribution<double> f_dist(size1 - 1, size2 - 1);
+    boost::math::fisher_f_distribution<double> f_dist(df1, df2);
     double lowerCriticalValue = boost::math::quantile(f_dist, alpha / 2);
 
     // 修复：upperCriticalValue 应该是上分位点，而不是 complement 对象
@@ -1081,7 +1104,23 @@ Forwarder::fTest(double var1, double var2, size_t size1, size_t size2, double al
     NFD_LOG_INFO("F-test lower critical value: " << lowerCriticalValue);
     NFD_LOG_INFO("F-test upper critical value: " << upperCriticalValue);
 
-    return f > lowerCriticalValue && f < upperCriticalValue;
+    // two-sided p-value (observe)
+    double pValue = 1.0;
+    if (std::isfinite(f)) {
+      const double cdf = boost::math::cdf(f_dist, f);
+      pValue = 2.0 * std::min(cdf, 1.0 - cdf);
+      if (pValue < 0.0) pValue = 0.0;
+      if (pValue > 1.0) pValue = 1.0;
+      NFD_LOG_INFO("F-test CDF(F): " << cdf << " => two-sided p: " << pValue);
+    } else {
+      NFD_LOG_INFO("F-test CDF(F): (non-finite F) => p approx 0");
+      pValue = 0.0;
+    }
+
+    const bool pass = (f > lowerCriticalValue && f < upperCriticalValue);
+    NFD_LOG_INFO("F-test decision: " << (pass ? "PASS" : "FAIL")
+           << " (alpha=" << alpha << ", p=" << pValue << ")");
+    return pass;
 }
 
 // 新增：O(n) Brown-Forsythe Levene Test（t-digest中位数估计 + ANOVA F）
@@ -1204,23 +1243,44 @@ Forwarder::oNLeveneTestTdigest(const std::vector<int64_t>& g1,
     // p = 1 - CDF(F)
     const double pValue = boost::math::cdf(boost::math::complement(f_dist, fStat));
 
-    NFD_LOG_INFO("Levene(t-digest) medians: " << med1 << ", " << med2
-                 << " zMeans: " << zBar1 << ", " << zBar2
-                 << " F: " << fStat
-                 << " p: " << pValue
-                 << " alpha: " << alpha);
+    // upper-tail critical value: reject if F >= Fcrit
+    const double fCritical = boost::math::quantile(boost::math::complement(f_dist, alpha));
+
+    NFD_LOG_INFO("Levene(t-digest) inputs: n1=" << n1 << " n2=" << n2 << " N=" << N
+           << " dfBetween=" << dfBetween << " dfWithin=" << dfWithin
+           << " compression=" << compression
+           << " medians=" << med1 << "," << med2
+           << " sumZ1=" << sumZ1 << " sumZ2=" << sumZ2
+           << " zBar1=" << zBar1 << " zBar2=" << zBar2 << " zBarAll=" << zBarAll
+           << " ssBetween=" << ssBetween << " ssWithin=" << ssWithin
+           << " msBetween=" << msBetween << " msWithin=" << msWithin
+           << " F=" << fStat << " Fcrit=" << fCritical
+           << " p=" << pValue << " alpha=" << alpha);
 
     // p > alpha => 不拒绝方差相等（方差齐性）
-    return pValue > alpha;
+    const bool pass = (pValue > alpha);
+    NFD_LOG_INFO("Levene(t-digest) decision (equal variances?): " << (pass ? "PASS" : "FAIL"));
+    return pass;
 }
 
 // t 检验
 bool 
 Forwarder::tTest(double mean1, double mean2, double var1, double var2, size_t size1, size_t size2, double alpha) {
-    NFD_LOG_INFO("size1: " << size1 << " size2: " << size2);
+  const double df = (size1 + size2 >= 2) ? static_cast<double>(size1 + size2 - 2) : 0.0;
+  NFD_LOG_INFO("t-test inputs: n1=" << size1 << " n2=" << size2
+         << " df=" << df
+         << " mean1=" << mean1 << " mean2=" << mean2
+         << " var1=" << var1 << " var2=" << var2
+         << " alpha=" << alpha);
+  if (size1 < 2 || size2 < 2 || df <= 0.0) {
+    NFD_LOG_INFO("t-test: sample too small, treat as equal means");
+    return true;
+  }
     if(var1==0&&var2==0)
     {
-        if((mean1*0.99<mean2)&&(mean1*1.01>mean2))
+    const bool pass = ((mean1*0.99<mean2)&&(mean1*1.01>mean2));
+    NFD_LOG_INFO("t-test special-case (var1=var2=0): decision=" << (pass ? "PASS" : "FAIL"));
+    if(pass)
         {
             return true;
         }
@@ -1230,8 +1290,11 @@ Forwarder::tTest(double mean1, double mean2, double var1, double var2, size_t si
         }
     }
     double sw2 = ((size1 - 1) * var1 + (size2 - 1) * var2) / (size1 + size2 - 2);
-    double t = (mean1 - mean2) / std::sqrt(sw2 * (1.0 / size1 + 1.0 / size2));
-    NFD_LOG_INFO("t-test value: " << t);
+    const double se = std::sqrt(sw2 * (1.0 / size1 + 1.0 / size2));
+    double t = (se == 0.0) ? 0.0 : ((mean1 - mean2) / se);
+  NFD_LOG_INFO("t-test pooled variance sw2: " << sw2);
+  NFD_LOG_INFO("t-test standard error se: " << se);
+  NFD_LOG_INFO("t-test value: " << t);
 
     // 使用 boost 库计算临界值
     boost::math::students_t_distribution<double> t_dist(size1 + size2 - 2);
@@ -1239,7 +1302,96 @@ Forwarder::tTest(double mean1, double mean2, double var1, double var2, size_t si
 
     NFD_LOG_INFO("t-test critical value: " << criticalValue);
 
-    return std::abs(t) < criticalValue;
+    // two-sided p-value (observe)
+    double pValue = 1.0;
+    if (std::isfinite(t)) {
+      const double absT = std::abs(t);
+      // p = 2 * (1 - CDF(|t|))
+      const double cdf = boost::math::cdf(t_dist, absT);
+      pValue = 2.0 * (1.0 - cdf);
+      if (pValue < 0.0) pValue = 0.0;
+      if (pValue > 1.0) pValue = 1.0;
+      NFD_LOG_INFO("t-test CDF(|t|): " << cdf << " => two-sided p: " << pValue);
+    } else {
+      NFD_LOG_INFO("t-test CDF(|t|): (non-finite t) => p approx 0");
+      pValue = 0.0;
+    }
+
+    const bool pass = (std::abs(t) < criticalValue);
+    NFD_LOG_INFO("t-test decision: " << (pass ? "PASS" : "FAIL")
+           << " (alpha=" << alpha << ", p=" << pValue << ")");
+    return pass;
+}
+
+// Welch t-test（不等方差）
+bool
+Forwarder::welchTTest(double mean1, double mean2, double var1, double var2,
+                      size_t size1, size_t size2, double alpha)
+{
+  NFD_LOG_INFO("Welch t-test inputs: n1=" << size1 << " n2=" << size2
+         << " mean1=" << mean1 << " mean2=" << mean2
+         << " var1=" << var1 << " var2=" << var2
+         << " alpha=" << alpha);
+
+  if (size1 < 2 || size2 < 2) {
+    NFD_LOG_INFO("Welch t-test: sample too small, treat as equal means");
+    return true;
+  }
+
+  if (var1 == 0.0 && var2 == 0.0) {
+    const bool pass = ((mean1 * 0.99 < mean2) && (mean1 * 1.01 > mean2));
+    NFD_LOG_INFO("Welch t-test special-case (var1=var2=0): decision=" << (pass ? "PASS" : "FAIL"));
+    return pass;
+  }
+
+  const double n1 = static_cast<double>(size1);
+  const double n2 = static_cast<double>(size2);
+  const double a = var1 / n1;
+  const double b = var2 / n2;
+  const double se2 = a + b;
+  const double se = std::sqrt(se2);
+  const double t = (se == 0.0) ? 0.0 : ((mean1 - mean2) / se);
+
+  // Welch–Satterthwaite df
+  const double denom = ((a * a) / (n1 - 1.0)) + ((b * b) / (n2 - 1.0));
+  double df = 0.0;
+  if (denom == 0.0) {
+    df = std::numeric_limits<double>::infinity();
+  } else {
+    df = (se2 * se2) / denom;
+  }
+
+  NFD_LOG_INFO("Welch t-test stats: a=var1/n1=" << a << " b=var2/n2=" << b
+         << " se2=" << se2 << " se=" << se
+         << " t=" << t << " df=" << df);
+
+  if (!std::isfinite(df) || df <= 0.0) {
+    NFD_LOG_INFO("Welch t-test: invalid df, treat as equal means");
+    return true;
+  }
+
+  boost::math::students_t_distribution<double> t_dist(df);
+  const double criticalValue = boost::math::quantile(boost::math::complement(t_dist, alpha / 2));
+
+  // two-sided p-value (observe): p = 2 * (1 - CDF(|t|))
+  double pValue = 1.0;
+  if (std::isfinite(t)) {
+    const double absT = std::abs(t);
+    const double cdf = boost::math::cdf(t_dist, absT);
+    pValue = 2.0 * (1.0 - cdf);
+    if (pValue < 0.0) pValue = 0.0;
+    if (pValue > 1.0) pValue = 1.0;
+    NFD_LOG_INFO("Welch t-test CDF(|t|): " << cdf << " => two-sided p: " << pValue);
+  } else {
+    NFD_LOG_INFO("Welch t-test CDF(|t|): (non-finite t) => p approx 0");
+    pValue = 0.0;
+  }
+
+  NFD_LOG_INFO("Welch t-test critical value: " << criticalValue);
+  const bool pass = (std::abs(t) < criticalValue);
+  NFD_LOG_INFO("Welch t-test decision: " << (pass ? "PASS" : "FAIL")
+         << " (alpha=" << alpha << ", p=" << pValue << ")");
+  return pass;
 }
 
 //假设检验执行
@@ -1297,27 +1449,32 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
                 // }
                 // ---- end old ----
 
-                // 新版：t-digest Brown-Forsythe Levene（对非正态更稳健）
-                // compression 建议 100；你也可以把它做成成员/参数
-                const double compression = TDIGEST_COMPRESSION_DEFAULT;
-                if (oNLeveneTestTdigest(sample1, sample2, alpha, compression)) {
-                    if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
-                        finalSuspect1.insert(faceIds[i]);
-                        finalSuspect1.insert(faceIds[j]);
-                        referenceFaceId = faceIds[i];
-                        firstIndex = i;
-                        secondIndex = j;
-                        foundFirstPair = true;
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": First pair found - Face " << faceIds[i]
-                                     << " and Face " << faceIds[j] << " have equal means and (Levene) equal variances.");
-                        break;
-                    }
-                    else {
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have equal means.");
-                    }
+                /*
+                 * 原本假设检验（已按要求注释）：Levene(t-digest) + pooled t-test
+                 *
+                 * const double compression = TDIGEST_COMPRESSION_DEFAULT;
+                 * if (oNLeveneTestTdigest(sample1, sample2, alpha, compression)) {
+                 *   if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
+                 *     ...
+                 *   }
+                 * }
+                 */
+
+                // 新版本：仅用 Welch t-test 做“均值相等”判断（不要求方差齐性）
+                if (welchTTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
+                  finalSuspect1.insert(faceIds[i]);
+                  finalSuspect1.insert(faceIds[j]);
+                  referenceFaceId = faceIds[i];
+                  firstIndex = i;
+                  secondIndex = j;
+                  foundFirstPair = true;
+                  NFD_LOG_INFO("Cluster " << cluster.first << ": First pair found (Welch) - Face " << faceIds[i]
+                         << " and Face " << faceIds[j] << " have equal means.");
+                  break;
                 }
                 else {
-                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i] << " and Face " << faceIds[j] << " do not have (Levene) equal variances.");
+                  NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << faceIds[i]
+                         << " and Face " << faceIds[j] << " do not have equal means (Welch).");
                 }
             }
             if (foundFirstPair) break;
@@ -1342,19 +1499,25 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
                 // }
                 // ---- end old ----
 
-                const double compression = TDIGEST_COMPRESSION_DEFAULT;
-                if (oNLeveneTestTdigest(sample1, sample2, alpha, compression)) {
-                    if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
-                        finalSuspect1.insert(faceIds[i]);
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
-                                     << " and Face " << faceIds[i] << " have equal means and (Levene) equal variances.");
-                    } else {
-                        NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
-                                     << " and Face " << faceIds[i] << " do not have equal means.");
-                    }
+                /*
+                 * 原本假设检验（已按要求注释）：Levene(t-digest) + pooled t-test
+                 *
+                 * const double compression = TDIGEST_COMPRESSION_DEFAULT;
+                 * if (oNLeveneTestTdigest(sample1, sample2, alpha, compression)) {
+                 *   if (tTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
+                 *     ...
+                 *   }
+                 * }
+                 */
+
+                // 新版本：仅用 Welch t-test
+                if (welchTTest(mean1, mean2, var1, var2, sample1.size(), sample2.size(), alpha)) {
+                  finalSuspect1.insert(faceIds[i]);
+                  NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
+                         << " and Face " << faceIds[i] << " have equal means (Welch).");
                 } else {
-                    NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
-                                 << " and Face " << faceIds[i] << " do not have (Levene) equal variances.");
+                  NFD_LOG_INFO("Cluster " << cluster.first << ": Face " << referenceFaceId
+                         << " and Face " << faceIds[i] << " do not have equal means (Welch).");
                 }
             }
         }
@@ -1367,7 +1530,12 @@ Forwarder::performTests(std::map<int, std::vector<FaceId>>& data,
 }
 
 void 
-Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
+Forwarder::performAnomalyDetection(std::set<FaceId>& finalSuspect2) {
+  if (lastIntervalSeriesOfFace.empty()) {
+    NFD_LOG_INFO("performAnomalyDetection: lastIntervalSeriesOfFace is empty, skip");
+    return;
+  }
+
     // 准备输入数据
     Json::Value inputData;
     double sum_feature = 0;
@@ -1389,8 +1557,9 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
         sum_feature += feature;
         sum2_feature += feature * feature;
     }
-    double avg_feature = sum_feature / (double)lastIntervalSeriesOfFace.size();
-    double std_feature = std::sqrt(sum2_feature / (double)lastIntervalSeriesOfFace.size() - avg_feature * avg_feature);
+    const double denom = static_cast<double>(lastIntervalSeriesOfFace.size());
+    double avg_feature = sum_feature / denom;
+    double std_feature = std::sqrt(sum2_feature / denom - avg_feature * avg_feature);
     NFD_LOG_INFO("avg_feature: " << avg_feature);
     NFD_LOG_INFO("std_feature: " << std_feature);
     double threshold_1std = avg_feature + 1 * std_feature;
@@ -1467,6 +1636,14 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
       NFD_LOG_INFO("suspect exists in this period (after IQR), skip kIqrEwma learning");
     }
 
+    // -----------------------
+    // 外部孤立森林（Python isolation_forest.py）阶段：已禁用
+    // 说明：该阶段会引入外部脚本/JSON 解析依赖，且在输出为空/非法时可能导致仿真中断。
+    // 如需恢复：取消下面整段注释，并确保 isolation_forest.py 在工作目录可用且输出严格为 JSON。
+    // -----------------------
+
+    /*
+
     // ---- 保留旧版（静态kIQR）逻辑，不删除（仅注释）----
     // double upperBoundOld_1_5 = q3 + 1.5 * iqr;
     // double upperBoundOld_2_0 = q3 + 2.0 * iqr;
@@ -1522,13 +1699,59 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
     // 调用 Python 脚本
     std::string command = "python3 isolation_forest.py < " + 
                          inputFilename + " > " + outputFilename;
-    std::system(command.c_str());
+    {
+      // 先检查脚本是否存在（相对路径基于当前进程工作目录）
+      std::ifstream scriptFile("isolation_forest.py");
+      if (!scriptFile.good()) {
+        NFD_LOG_INFO("isolation_forest.py not found in current working directory; skip python stage");
+        std::remove(inputFilename.c_str());
+        std::remove(outputFilename.c_str());
+        return;
+      }
+    }
 
-    // 读取输出结果
+    const int rc = std::system(command.c_str());
+    if (rc != 0) {
+      NFD_LOG_INFO("isolation_forest.py execution failed rc=" << rc << ", cmd=" << command);
+      std::remove(inputFilename.c_str());
+      std::remove(outputFilename.c_str());
+      return;
+    }
+
+    // 读取输出结果（健壮处理：输出为空/非JSON时不崩溃）
     std::ifstream outputFile(outputFilename);
-    Json::Value outputData;
-    outputFile >> outputData;
+    if (!outputFile.is_open()) {
+      NFD_LOG_INFO("cannot open isolation forest output file: " << outputFilename);
+      std::remove(inputFilename.c_str());
+      std::remove(outputFilename.c_str());
+      return;
+    }
+
+    std::ostringstream ossOut;
+    ossOut << outputFile.rdbuf();
     outputFile.close();
+
+    const std::string outStr = ossOut.str();
+    if (outStr.find_first_not_of(" \t\r\n") == std::string::npos) {
+      NFD_LOG_INFO("isolation forest output is empty; skip parsing");
+      std::remove(inputFilename.c_str());
+      std::remove(outputFilename.c_str());
+      return;
+    }
+
+    Json::Value outputData;
+    {
+      Json::CharReaderBuilder builder;
+      builder["collectComments"] = false;
+      std::string errs;
+      std::istringstream iss(outStr);
+      if (!Json::parseFromStream(builder, iss, &outputData, &errs)) {
+        NFD_LOG_INFO("failed to parse isolation forest output JSON: " << errs);
+        std::remove(inputFilename.c_str());
+        std::remove(outputFilename.c_str());
+        return;
+      }
+    }
 
     // 处理完成后删除临时文件
     std::remove(inputFilename.c_str());
@@ -1546,9 +1769,15 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
     //     }
     // }
     //求异常分数的均值和标准差
+    const auto outMembers = outputData.getMemberNames();
+    if (outMembers.empty()) {
+      NFD_LOG_INFO("isolation forest output JSON has no members; skip");
+      return;
+    }
+
     double sum = 0;
     double sum2 = 0;
-    for (const auto& faceId : outputData.getMemberNames()) {
+    for (const auto& faceId : outMembers) {
         // if(std::stoi(faceId) < 0){
         //     continue;
         // }
@@ -1557,15 +1786,15 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
         sum += anomaly_score;
         sum2 += anomaly_score * anomaly_score;
     }
-    double mean = sum / outputData.getMemberNames().size();
+    double mean = sum / static_cast<double>(outMembers.size());
     NFD_LOG_INFO("mean of anomaly score: " << mean);
-    double std = std::sqrt(sum2 / outputData.getMemberNames().size() - mean * mean);
+    double std = std::sqrt(sum2 / static_cast<double>(outMembers.size()) - mean * mean);
     NFD_LOG_INFO("std of anomaly score: " << std);
     //异常分数的阈值为-2(0.5-sqrt(mean))^2
     // double threshold = -2 * (0.5 - std::sqrt(std::max(mean,0.0))) * (0.5 - std::sqrt(std::max(mean,0.0)));
     double threshold = -0.2;
     NFD_LOG_INFO("threshold of anomaly score: " << threshold);
-    for (const auto& faceId : outputData.getMemberNames()) {
+    for (const auto& faceId : outMembers) {
         if(std::stoi(faceId) < 0){
             continue;
         }
@@ -1577,6 +1806,7 @@ Forwarder::performIsolationForestDetection(std::set<FaceId>& finalSuspect2) {
             //finalSuspect2.insert(std::stoi(faceId));
         }
     }
+    */
 }
 
 static Name
@@ -1715,7 +1945,7 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       uint64_t tagWrite = tagRead & 0xFFFF0000FFFFFFFF;
       interest.setTag(make_shared<ndn::lp::ConsumerIdTag>(tagWrite));
 
-      if(isEdgeNode)
+      if (isEdgeNode && middleBits == 1)
       {
         // 更新当前周期的兴趣包计数
         FaceId faceId = ingress.face.getId();
@@ -1796,7 +2026,8 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       //     }
       // }
       
-      if(isEdgeNode)
+      // 只对“直连用户 face”的兴趣包收集 detect 需要的 per-face 序列（middleBits==1）
+      if(isEdgeNode && middleBits == 1)
       {
         //第一个包
         if(hasInterestOfFace.find(faceId)==hasInterestOfFace.end())

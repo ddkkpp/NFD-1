@@ -219,13 +219,19 @@ bool
 tTest(double mean1, double mean2, double var1, double var2, 
       size_t size1, size_t size2, double alpha);
 
+// Welch's t-test (unequal variances)
+// 返回 true 表示“均值无显著差异(不拒绝相等均值)”，false 表示“均值显著不同”
+bool
+welchTTest(double mean1, double mean2, double var1, double var2,
+       size_t size1, size_t size2, double alpha);
+
 void 
 performTests(std::map<int, std::vector<FaceId>>& data, 
             std::map<FaceId, std::vector<int64_t>>& lastIntervalSeriesOfFace, 
             double alpha, std::set<FaceId>& finalSuspect1);
 
 void 
-performIsolationForestDetection(std::set<FaceId>& finalSuspect2);
+performAnomalyDetection(std::set<FaceId>& finalSuspect2);
 
 //   struct Point {
 //       std::vector<int64_t> values;
