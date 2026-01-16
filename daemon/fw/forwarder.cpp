@@ -843,11 +843,11 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     NFD_LOG_INFO("cacheAccuracy= "<<cacheAccuracy);
   }
   //注意：这里的路径需要根据实际情况修改
-  std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-empty.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
-  if (outFile.is_open()) {
-    outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
-  }
-  outFile.close();
+  // std::ofstream outFile("/media/sf_ndnsim/ForwarderMetrics-empty.txt", std::ios::app); // 或者 outFile.open("output.txt", std::ofstream::app);
+  // if (outFile.is_open()) {
+  //   outFile << "nodeid="<<ptr->mynodeid<<" Hit= "<<normalHitRatio<<" DR= "<<detectionRatio<<" FR= "<<falseAlarmRatio<<std::endl;
+  // }
+  // outFile.close();
 
   //清空数据
   ptr->numofAllInterest = 0;
