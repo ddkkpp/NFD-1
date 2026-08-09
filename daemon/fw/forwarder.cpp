@@ -360,8 +360,15 @@ void detectWDCallback(Forwarder *ptr)
                     entry.second.erase(it);
                     ptr->lastContentSeriesOfFace[faceId].erase(ptr->lastContentSeriesOfFace[faceId].begin());
                     it = entry.second.begin();
-                    hasUnSampleInterval+=*it;//先删除首个元素，再加上补上来的首个元素
-                    ptr->firstInterestTimeInCurWndOfFace[faceId]=ptr->firstInterestTimeInCurWndOfFace[faceId]+ns3::MicroSeconds(*it);
+
+                    // 可能已删空：此时该 face 在本窗口没有可用样本，后面会统一清理
+                    if (it == entry.second.end()) {
+                      break;
+                    }
+
+                    hasUnSampleInterval += *it; // 先删除首个元素，再加上补上来的首个元素
+                    ptr->firstInterestTimeInCurWndOfFace[faceId] =
+                      ptr->firstInterestTimeInCurWndOfFace[faceId] + ns3::MicroSeconds(*it);
                 }
             }
             //从后往前删除
@@ -376,18 +383,71 @@ void detectWDCallback(Forwarder *ptr)
               NFD_LOG_INFO("firstInterestTimeInCurWndOfFace[faceId]: " << ptr->firstInterestTimeInCurWndOfFace[faceId]);
               int64_t needDropInterval = (ptr->firstInterestTimeInCurWndOfFace[lastFaceInNearRange] - ptr->firstInterestTimeInCurWndOfFace[faceId]).GetMicroSeconds();
               NFD_LOG_INFO("needDropInterval: " << needDropInterval);
-              for(auto it = entry.second.end();it!=(entry.second.begin()++);)
-              {
-                  if(needDropInterval<=0)
-                  {
-                      break;
-                  }
-                  --it;
-                  NFD_LOG_INFO("earse interval: " << *it);
-                  needDropInterval-=*it;
-                  ptr->lastContentSeriesOfFace[entry.first].erase(ptr->lastContentSeriesOfFace[entry.first].end()-1);
-                  it=entry.second.erase(it);
+
+              // 从右往左裁剪：原来的 begin()++ 写法是 UB（会导致随机崩溃/数据损坏）
+              while (needDropInterval > 0 && !entry.second.empty()) {
+                const int64_t interval = entry.second.back();
+                NFD_LOG_INFO("earse interval: " << interval);
+                needDropInterval -= interval;
+                entry.second.pop_back();
+
+                auto contentIt = ptr->lastContentSeriesOfFace.find(faceId);
+                if (contentIt == ptr->lastContentSeriesOfFace.end()) {
+                  NFD_LOG_INFO("FATAL(preprocess): interval exists but content series missing (right trim). faceId="
+                               << faceId);
+                  // 只记录问题并停止对该 face 的进一步裁剪；后续统一清理会将其移出本轮检测输入
+                  break;
+                }
+                if (contentIt->second.empty()) {
+                  // 这里说明 interval/content 不一致或被裁剪到空，后面会统一清理；但此时 pop_back 会越界
+                  break;
+                }
+                contentIt->second.pop_back();
               }
+            }
+
+            // 统一清理：裁剪后把 interval/content 不一致或为空的 face 移出本轮检测输入
+            for (auto it = ptr->lastIntervalSeriesOfFace.begin(); it != ptr->lastIntervalSeriesOfFace.end();) {
+              const FaceId faceId = it->first;
+              auto contentIt = ptr->lastContentSeriesOfFace.find(faceId);
+              if (contentIt == ptr->lastContentSeriesOfFace.end()) {
+                NFD_LOG_INFO("FATAL(preprocess): interval exists but content series missing. faceId=" << faceId
+                             << " intervalSize=" << it->second.size());
+                // 移出本轮检测输入
+                ptr->validRangeOfFace.erase(faceId);
+                it = ptr->lastIntervalSeriesOfFace.erase(it);
+                continue;
+              }
+
+              if (it->second.size() != contentIt->second.size()) {
+                NFD_LOG_INFO("FATAL(preprocess): interval/content size mismatch. faceId=" << faceId
+                             << " intervalSize=" << it->second.size()
+                             << " contentSize=" << contentIt->second.size());
+                // 移出本轮检测输入
+                ptr->validRangeOfFace.erase(faceId);
+                ptr->lastContentSeriesOfFace.erase(contentIt);
+                it = ptr->lastIntervalSeriesOfFace.erase(it);
+                continue;
+              }
+
+              // 需求：删除后若长度小于 10，则删除这个 face 的记录
+              if (it->second.size() < 10) {
+                NFD_LOG_INFO("Drop face due to short series (<10): faceId=" << faceId
+                             << " size=" << it->second.size());
+                ptr->validRangeOfFace.erase(faceId);
+                ptr->lastContentSeriesOfFace.erase(contentIt);
+                it = ptr->lastIntervalSeriesOfFace.erase(it);
+                continue;
+              }
+
+              if (it->second.empty()) {
+                NFD_LOG_INFO("Drop face after alignment: faceId=" << faceId);
+                ptr->lastContentSeriesOfFace.erase(contentIt);
+                it = ptr->lastIntervalSeriesOfFace.erase(it);
+                continue;
+              }
+
+              ++it;
             }
 
             // 对lastContentSeriesOfFace中每个face对应的contentSeries，出现的元素个数计数
@@ -424,12 +484,34 @@ void detectWDCallback(Forwarder *ptr)
                 }
             };
       
-            for (auto& entry : ptr->lastContentSeriesOfFace) {
-                FaceId faceId = entry.first;
+            for (auto it = ptr->lastContentSeriesOfFace.begin(); it != ptr->lastContentSeriesOfFace.end();) {
+                const FaceId faceId = it->first;
+                auto& contentSeries = it->second;
+
                 std::vector<std::pair<uint64_t, int>> countVector(contentCount[faceId].begin(), contentCount[faceId].end());
                 radixSort(countVector);
 
-                int total = entry.second.size();
+                if (contentSeries.empty() || countVector.empty()) {
+                  NFD_LOG_INFO("FATAL(validRangeOfFace): empty series after cleanup. Drop faceId=" << faceId
+                               << " contentSize=" << contentSeries.size()
+                               << " countVectorSize=" << countVector.size());
+                  ptr->lastIntervalSeriesOfFace.erase(faceId);
+                  ptr->validRangeOfFace.erase(faceId);
+                  it = ptr->lastContentSeriesOfFace.erase(it);
+                  continue;
+                }
+
+                // 需求：删除/过滤后若长度小于 10，则删除这个 face 的记录
+                if (contentSeries.size() < 10) {
+                  NFD_LOG_INFO("Drop face due to short content series (<10): faceId=" << faceId
+                               << " contentSize=" << contentSeries.size());
+                  ptr->lastIntervalSeriesOfFace.erase(faceId);
+                  ptr->validRangeOfFace.erase(faceId);
+                  it = ptr->lastContentSeriesOfFace.erase(it);
+                  continue;
+                }
+
+                int total = contentSeries.size();
                 int cumulative = 0;
                 size_t i = 0;
                 for (; i < countVector.size(); ++i) {
@@ -437,6 +519,14 @@ void detectWDCallback(Forwarder *ptr)
                     if (cumulative >= total * 0.95) {
                         break;
                     }
+                }
+
+                if (i >= countVector.size()) {
+                  NFD_LOG_INFO("FATAL(validRangeOfFace): i out of range. faceId=" << faceId
+                               << " i=" << i << " countVectorSize=" << countVector.size()
+                               << " total=" << total << " cumulative=" << cumulative);
+                  // 退化处理：保留所有 content
+                  i = countVector.size() - 1;
                 }
 
                 std::unordered_set<uint64_t> toKeep;
@@ -449,40 +539,50 @@ void detectWDCallback(Forwarder *ptr)
                 NFD_LOG_INFO("faceId: "<< faceId<<" validRangeOfFace: " << i);
 
                 std::vector<uint64_t> newContentSeries;
-                for (uint64_t content : entry.second) {
+                for (uint64_t content : contentSeries) {
                     if (toKeep.find(content) != toKeep.end()) {
                         newContentSeries.push_back(content);
                     }
                 }
-                entry.second = newContentSeries;
+                contentSeries = newContentSeries;
+
+                if (contentSeries.size() < 10) {
+                  NFD_LOG_INFO("Drop face due to short content series after filtering (<10): faceId=" << faceId
+                         << " contentSize=" << contentSeries.size());
+                  ptr->lastIntervalSeriesOfFace.erase(faceId);
+                  ptr->validRangeOfFace.erase(faceId);
+                  it = ptr->lastContentSeriesOfFace.erase(it);
+                  continue;
+                }
+                ++it;
             }
 
             NFD_LOG_INFO("after pre-processing data");
             //重新打印lastIntervalSeriesOfFace
-            NFD_LOG_INFO("lastIntervalSeriesOfFace: ");
-            for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
-            {
-                NFD_LOG_INFO("Face ID: " << entry.first);
-                std::ostringstream oss;
-                NFD_LOG_INFO("lastIntervalSeriesOfFace size"<<entry.second.size());
-                for (const int64_t& interval : entry.second) 
-                {
-                    oss << interval << " ";
-                }
-                NFD_LOG_INFO(oss.str());
-            }
-            //重新打印lastContentSeriesOfFace
-            NFD_LOG_INFO("lastContentSeriesOfFace: ");
-            for (const auto& entry : ptr->lastContentSeriesOfFace) 
-            {
-                NFD_LOG_INFO("Face ID: " << entry.first);
-                std::ostringstream oss;
-                for (const uint64_t& content : entry.second) 
-                {
-                    oss << content << " ";
-                }
-                NFD_LOG_INFO(oss.str());
-            }
+            // NFD_LOG_INFO("lastIntervalSeriesOfFace: ");
+            // for (const auto& entry : ptr->lastIntervalSeriesOfFace) 
+            // {
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
+            //     std::ostringstream oss;
+            //     NFD_LOG_INFO("lastIntervalSeriesOfFace size"<<entry.second.size());
+            //     for (const int64_t& interval : entry.second) 
+            //     {
+            //         oss << interval << " ";
+            //     }
+            //     NFD_LOG_INFO(oss.str());
+            // }
+            // //重新打印lastContentSeriesOfFace
+            // NFD_LOG_INFO("lastContentSeriesOfFace: ");
+            // for (const auto& entry : ptr->lastContentSeriesOfFace) 
+            // {
+            //     NFD_LOG_INFO("Face ID: " << entry.first);
+            //     std::ostringstream oss;
+            //     for (const uint64_t& content : entry.second) 
+            //     {
+            //         oss << content << " ";
+            //     }
+            //     NFD_LOG_INFO(oss.str());
+            // }
 
             //准备SimpleClustering聚类的数据
             std::map<FaceId, size_t> intervalLengths;
@@ -507,15 +607,15 @@ void detectWDCallback(Forwarder *ptr)
 
             // SimpleClustering聚类结果
             NFD_LOG_INFO("SimpleClustering output: ");
-            for (const auto& cluster : clusters) 
-            {
-                NFD_LOG_INFO("Simple Cluster: " << cluster.first);
-                std::ostringstream oss;
-                for (int faceId : cluster.second) {
-                    oss << faceId << " ";
-                }
-                NFD_LOG_INFO("  Face IDs: " << oss.str());
-            }
+            // for (const auto& cluster : clusters) 
+            // {
+            //     NFD_LOG_INFO("Simple Cluster: " << cluster.first);
+            //     std::ostringstream oss;
+            //     for (int faceId : cluster.second) {
+            //         oss << faceId << " ";
+            //     }
+            //     NFD_LOG_INFO("  Face IDs: " << oss.str());
+            // }
 
             NFD_LOG_INFO("LSH start: ");
             for (auto& cluster : clusters) 
@@ -530,13 +630,13 @@ void detectWDCallback(Forwarder *ptr)
                   }
                 }
                 NFD_LOG_INFO("in Simple Cluster: " << cluster.first);
-                std::ostringstream oss;
-                for (int faceId : cluster.second) {
-                    oss << faceId << " ";
-                }
-                NFD_LOG_INFO("  Face IDs: " << oss.str());
-                oss.str("");
-                oss.clear();
+                // std::ostringstream oss;
+                // for (int faceId : cluster.second) {
+                //     oss << faceId << " ";
+                // }
+                // NFD_LOG_INFO("  Face IDs: " << oss.str());
+                // oss.str("");
+                // oss.clear();
 
                 //只使用当前SimpleCluster中的faceId所对应的lastContentSeriesOfFace中的向量
                 std::map<FaceId, std::vector<uint64_t>> contentSeriesInCluster;
@@ -652,14 +752,14 @@ void detectWDCallback(Forwarder *ptr)
                     // }
                     
                     // LSH聚类结果
-                    for (const auto& cluster : lshClusters) {
-                        NFD_LOG_INFO("Cluster ID: " << cluster.first);
-                        std::ostringstream oss;
-                        for (FaceId faceId : cluster.second) {
-                            oss << faceId << " ";
-                        }
-                        NFD_LOG_INFO("  Face IDs: " << oss.str());
-                    }
+                    // for (const auto& cluster : lshClusters) {
+                    //     NFD_LOG_INFO("Cluster ID: " << cluster.first);
+                    //     std::ostringstream oss;
+                    //     for (FaceId faceId : cluster.second) {
+                    //         oss << faceId << " ";
+                    //     }
+                    //     NFD_LOG_INFO("  Face IDs: " << oss.str());
+                    // }
 
                     //开始假设检验
                     NFD_LOG_INFO("hypothesis testing start: ");
@@ -703,6 +803,8 @@ void detectWDCallback(Forwarder *ptr)
             // for (const auto& entry : ptr->lastSequenceMap) {
             //     NFD_LOG_INFO("Content: " << entry.first << " Sequence: " << entry.second);
             // }
+
+
 
             for (FaceId faceId : ptr->finalSuspect) {
                 int count = 0;
@@ -899,18 +1001,18 @@ Forwarder::convertToBoolSeries(const std::map<FaceId, std::vector<uint64_t>>& co
         }
         ++col;
     }
-    //打印布尔矩阵
-    NFD_LOG_INFO("boolMatrix: ");
-    //按列打印
-    std::ostringstream oss;
-    for(size_t i = 0; i < boolMatrix[0].size(); ++i) {
-        for(size_t j = 0; j < boolMatrix.size(); ++j) {
-            oss << boolMatrix[j][i];
-        }
-        NFD_LOG_INFO(oss.str());
-        oss.str("");
-        oss.clear();
-    }
+    // //打印布尔矩阵
+    // NFD_LOG_INFO("boolMatrix: ");
+    // //按列打印
+    // std::ostringstream oss;
+    // for(size_t i = 0; i < boolMatrix[0].size(); ++i) {
+    //     for(size_t j = 0; j < boolMatrix.size(); ++j) {
+    //         oss << boolMatrix[j][i];
+    //     }
+    //     NFD_LOG_INFO(oss.str());
+    //     oss.str("");
+    //     oss.clear();
+    // }
 
     return boolMatrix;
 }
@@ -1554,33 +1656,33 @@ Forwarder::performAnomalyDetection(std::set<FaceId>& finalSuspect2) {
         NFD_LOG_INFO("Face " << faceId << " validRange: " << validRange 
                     << " length: " << length << " original factorN: " << n << " original factorM: "<< factorM[faceId]<<" feature: " << feature);
         inputData[std::to_string(faceId)] = feature;
-        sum_feature += feature;
-        sum2_feature += feature * feature;
+        // sum_feature += feature;
+        // sum2_feature += feature * feature;
     }
     const double denom = static_cast<double>(lastIntervalSeriesOfFace.size());
-    double avg_feature = sum_feature / denom;
-    double std_feature = std::sqrt(sum2_feature / denom - avg_feature * avg_feature);
-    NFD_LOG_INFO("avg_feature: " << avg_feature);
-    NFD_LOG_INFO("std_feature: " << std_feature);
-    double threshold_1std = avg_feature + 1 * std_feature;
-    double threshold_2std = avg_feature + 2 * std_feature;
-    double threshold_3std = avg_feature + 3 * std_feature;
-    NFD_LOG_INFO("threshold_1std: " << threshold_1std);
-    NFD_LOG_INFO("threshold_2std: " << threshold_2std);
-    NFD_LOG_INFO("threshold_3std: " << threshold_3std);
+    // double avg_feature = sum_feature / denom;
+    // double std_feature = std::sqrt(sum2_feature / denom - avg_feature * avg_feature);
+    // NFD_LOG_INFO("avg_feature: " << avg_feature);
+    // NFD_LOG_INFO("std_feature: " << std_feature);
+    // double threshold_1std = avg_feature + 1 * std_feature;
+    // double threshold_2std = avg_feature + 2 * std_feature;
+    // double threshold_3std = avg_feature + 3 * std_feature;
+    // NFD_LOG_INFO("threshold_1std: " << threshold_1std);
+    // NFD_LOG_INFO("threshold_2std: " << threshold_2std);
+    // NFD_LOG_INFO("threshold_3std: " << threshold_3std);
     Json::Value::Members memberNames = inputData.getMemberNames();
-    for (const auto& faceId : memberNames) {
-        double feature = inputData[faceId].asDouble();
-        if (feature > threshold_1std) {
-            NFD_LOG_INFO("1std find: Face " << faceId << " is suspect");
-        }
-        if (feature > threshold_2std) {
-            NFD_LOG_INFO("2std find: Face " << faceId << " is suspect");
-        }
-        if (feature > threshold_3std) {
-            NFD_LOG_INFO("3std find: Face " << faceId << " is suspect");
-        }
-    }
+    // for (const auto& faceId : memberNames) {
+    //     double feature = inputData[faceId].asDouble();
+    //     if (feature > threshold_1std) {
+    //         NFD_LOG_INFO("1std find: Face " << faceId << " is suspect");
+    //     }
+    //     if (feature > threshold_2std) {
+    //         NFD_LOG_INFO("2std find: Face " << faceId << " is suspect");
+    //     }
+    //     if (feature > threshold_3std) {
+    //         NFD_LOG_INFO("3std find: Face " << faceId << " is suspect");
+    //     }
+    // }
 
     //使用IQR方法检测异常值
     std::vector<double> featureList;
@@ -2026,6 +2128,11 @@ Forwarder::onIncomingInterest(const Interest& interest, const FaceEndpoint& ingr
       //     }
       // }
       
+      if (mynode != nullptr) {
+          mynodeid = mynode->GetId();
+          NFD_LOG_DEBUG("nodeid= "<<mynodeid);
+      }
+
       // 只对“直连用户 face”的兴趣包收集 detect 需要的 per-face 序列（middleBits==1）
       if(isEdgeNode && middleBits == 1)
       {
@@ -2823,8 +2930,8 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
     return;
   }
 
-
-  if(ptr->isEdgeNode){
+  //basic拓扑看全部路由器，DFN拓扑只看边缘路由器
+  //if(ptr->isEdgeNode){
       NFD_LOG_INFO("nodeid= "<<ptr->mynodeid);
       double receivedMaliciousInterestRatio = 0;
       NFD_LOG_INFO("numofAllInterest= "<<ptr->numofAllInterest);
@@ -2885,7 +2992,7 @@ void computeForwarderMetricsWDCallback(Forwarder *ptr)
       ptr->numOfPopularData = 0;
 
       ptr->computeForwarderMetricsWD.Ping(ptr->metricsWatchdogPeriod);
-  }
+  //}
 }
 
 void 
